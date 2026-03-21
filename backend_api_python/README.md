@@ -208,7 +208,7 @@ gunicorn -c gunicorn_config.py "run:app"
 ## Troubleshooting
 
 - **Database connection failed**: Check `DATABASE_URL` format and PostgreSQL service status
-- **Outbound requests fail**: Configure `PROXY_PORT` or `PROXY_URL` in `.env`
+- **Outbound requests fail**: Configure `PROXY_URL` in `.env`
 - **Disable auto-restore**: Set `DISABLE_RESTORE_RUNNING_STRATEGIES=true`
 - **Disable pending-order worker**: Set `ENABLE_PENDING_ORDER_WORKER=false`
 

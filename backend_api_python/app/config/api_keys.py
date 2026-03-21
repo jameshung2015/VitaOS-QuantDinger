@@ -82,18 +82,6 @@ class MetaAPIKeys(type):
         return []
     
     @property
-    def BOCHA_API_KEYS(cls):
-        """Bocha Search API keys (comma-separated for rotation)"""
-        env_val = os.getenv('BOCHA_API_KEYS', '').strip()
-        if env_val:
-            return [k.strip() for k in env_val.split(',') if k.strip()]
-        from app.utils.config_loader import load_addon_config
-        val = load_addon_config().get('bocha', {}).get('api_keys', '')
-        if val:
-            return [k.strip() for k in val.split(',') if k.strip()]
-        return []
-    
-    @property
     def SERPAPI_KEYS(cls):
         """SerpAPI keys (comma-separated for rotation)"""
         env_val = os.getenv('SERPAPI_KEYS', '').strip()

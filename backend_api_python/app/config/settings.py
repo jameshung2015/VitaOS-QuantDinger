@@ -66,12 +66,6 @@ class MetaConfig(type):
     # ==================== 安全配置 ====================
 
     @property
-    def CORS_ORIGINS(cls):
-        from app.utils.config_loader import load_addon_config
-        val = load_addon_config().get('app', {}).get('cors_origins')
-        return val if val else os.getenv('CORS_ORIGINS', '*')
-
-    @property
     def RATE_LIMIT(cls):
         from app.utils.config_loader import load_addon_config
         val = load_addon_config().get('app', {}).get('rate_limit')
@@ -94,15 +88,6 @@ class MetaConfig(type):
         if val is not None:
             return bool(val)
         return os.getenv('ENABLE_REQUEST_LOG', 'True').lower() == 'true'
-
-    @property
-    def ENABLE_AI_ANALYSIS(cls):
-        from app.utils.config_loader import load_addon_config
-        val = load_addon_config().get('app', {}).get('enable_ai_analysis')
-        if val is not None:
-            return bool(val)
-        return os.getenv('ENABLE_AI_ANALYSIS', 'True').lower() == 'true'
-
 
 class Config(metaclass=MetaConfig):
     """应用配置类"""

@@ -1,12 +1,13 @@
 """
 Billing Service - 统一计费服务
 
-管理用户积分消费、VIP状态检查、计费配置等功能。
-支持两种计费模式：
-1. 积分消耗模式：每次使用功能扣除相应积分
-2. VIP免费模式：VIP用户在有效期内免费使用
+负责用户积分余额、功能扣费、会员状态与套餐发放。
+当前计费模型为：
+1. 是否扣费由 `BILLING_ENABLED` 与各功能 cost 配置决定
+2. VIP/会员状态用于会员套餐与权益展示
+3. 社区指标的 `vip_free` 逻辑在社区购买流程中单独处理，不在这里做全局旁路
 
-计费配置存储在 .env 文件中，可通过系统设置界面配置。
+计费配置存储在 `.env` 文件中，可通过系统设置界面配置。
 """
 import os
 import time
@@ -27,9 +28,7 @@ BILLING_CONFIG_PREFIX = 'BILLING_'
 DEFAULT_BILLING_CONFIG = {
     # 全局开关
     'enabled': False,  # 是否启用计费
-    # IMPORTANT: VIP 不再默认免扣积分（VIP 仅对“VIP免费指标”生效）
-    'vip_bypass': False,  # VIP用户是否免费（功能计费层面的旁路，默认关闭）
-    
+
     # 各功能积分消耗（0表示免费）
     'cost_ai_analysis': 10,       # AI分析 每次消耗积分
     'cost_strategy_run': 5,       # 策略运行 每次消耗积分（启动时）
@@ -96,7 +95,7 @@ class BillingService:
         return config.get('enabled', False)
     
     def get_feature_cost(self, feature: str) -> int:
-        """获取功能消耗积分"""
+        """获取指定功能的积分消耗，0 表示免费"""
         config = self.get_billing_config()
         cost_key = f'cost_{feature}'
         return config.get(cost_key, 0)
@@ -475,13 +474,10 @@ class BillingService:
         # 免费功能
         if cost <= 0:
             return True, 'free_feature'
-        
-        # 检查VIP状态
-        if config.get('vip_bypass', True):
-            is_vip, _ = self.get_user_vip_status(user_id)
-            if is_vip:
-                return True, 'vip_free'
-        
+
+        # 说明：这里不再根据 VIP 做全局免扣积分旁路。
+        # VIP / membership 仅保留为套餐、到期时间和社区 vip_free 指标权益。
+
         # 检查积分余额
         credits = self.get_user_credits(user_id)
         if credits < cost:
@@ -710,7 +706,7 @@ class BillingService:
             return {'items': [], 'total': 0, 'page': 1, 'page_size': page_size, 'total_pages': 0}
     
     def get_user_billing_info(self, user_id: int) -> Dict[str, Any]:
-        """获取用户计费信息（供前端显示）"""
+        """获取用户计费与会员信息快照（供前端显示）"""
         credits = self.get_user_credits(user_id)
         is_vip, vip_expires_at = self.get_user_vip_status(user_id)
         config = self.get_billing_config()
@@ -720,9 +716,6 @@ class BillingService:
             'is_vip': is_vip,
             'vip_expires_at': vip_expires_at.isoformat() if vip_expires_at else None,
             'billing_enabled': config.get('enabled', False),
-            'vip_bypass': config.get('vip_bypass', False),
-            # Public support link for credits recharge / VIP purchase
-            'recharge_telegram_url': os.getenv('RECHARGE_TELEGRAM_URL', '').strip() or 'https://t.me/your_support_bot',
             # 功能费用（供前端显示）
             'feature_costs': {
                 'ai_analysis': config.get('cost_ai_analysis', 0),

@@ -184,6 +184,7 @@ def place_order_from_signal(
             side=side,
             qty=qty,
             reduce_only=reduce_only,
+            pos_side=pos_side,
             client_order_id=client_order_id,
         )
     if isinstance(client, CoinbaseExchangeClient):

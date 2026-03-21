@@ -58,16 +58,11 @@ class AnalysisMemory:
                         decision VARCHAR(10) NOT NULL,
                         confidence INT DEFAULT 50,
                         price_at_analysis DECIMAL(24, 8),
-                        entry_price DECIMAL(24, 8),
-                        stop_loss DECIMAL(24, 8),
-                        take_profit DECIMAL(24, 8),
                         summary TEXT,
                         reasons JSONB,
-                        risks JSONB,
                         scores JSONB,
                         indicators_snapshot JSONB,
                         raw_result JSONB,
-                        consensus_decision VARCHAR(10),
                         consensus_score DECIMAL(24, 8),
                         consensus_abs DECIMAL(24, 8),
                         agreement_ratio DECIMAL(10, 6),
@@ -100,14 +95,6 @@ class AnalysisMemory:
                             WHERE table_name = 'qd_analysis_memory' AND column_name = 'raw_result'
                         ) THEN
                             ALTER TABLE qd_analysis_memory ADD COLUMN raw_result JSONB;
-                        END IF;
-
-                        -- 添加多周期共识列（如果不存在）
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
-                            WHERE table_name = 'qd_analysis_memory' AND column_name = 'consensus_decision'
-                        ) THEN
-                            ALTER TABLE qd_analysis_memory ADD COLUMN consensus_decision VARCHAR(10);
                         END IF;
 
                         IF NOT EXISTS (
@@ -182,18 +169,13 @@ class AnalysisMemory:
                 decision = analysis_result.get("decision")
                 confidence = analysis_result.get("confidence")
                 price = analysis_result.get("market_data", {}).get("current_price")
-                entry = analysis_result.get("trading_plan", {}).get("entry_price")
-                stop = analysis_result.get("trading_plan", {}).get("stop_loss")
-                take = analysis_result.get("trading_plan", {}).get("take_profit")
                 summary = analysis_result.get("summary")
                 reasons = json.dumps(analysis_result.get("reasons", []))
-                risks = json.dumps(analysis_result.get("risks", []))
                 scores = json.dumps(analysis_result.get("scores", {}))
                 indicators = json.dumps(analysis_result.get("indicators", {}))
                 raw = json.dumps(analysis_result)
 
                 consensus = analysis_result.get("consensus") or {}
-                consensus_decision = consensus.get("consensus_decision")
                 consensus_score = consensus.get("consensus_score")
                 consensus_abs = consensus.get("consensus_abs")
                 agreement_ratio = consensus.get("agreement_ratio")
@@ -202,15 +184,16 @@ class AnalysisMemory:
                 cur.execute("""
                     INSERT INTO qd_analysis_memory (
                         user_id, market, symbol, decision, confidence,
-                        price_at_analysis, entry_price, stop_loss, take_profit,
-                        summary, reasons, risks, scores, indicators_snapshot, raw_result,
-                        consensus_decision, consensus_score, consensus_abs, agreement_ratio, quality_multiplier
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                              %s, %s, %s, %s, %s)
+                        price_at_analysis, summary, reasons, scores, indicators_snapshot, raw_result,
+                        consensus_score, consensus_abs, agreement_ratio, quality_multiplier
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                              %s, %s, %s, %s)
                     RETURNING id
-                """, (user_id, market, symbol, decision, confidence, price, entry, stop, take,
-                      summary, reasons, risks, scores, indicators, raw,
-                      consensus_decision, consensus_score, consensus_abs, agreement_ratio, quality_multiplier))
+                """, (
+                    user_id, market, symbol, decision, confidence,
+                    price, summary, reasons, scores, indicators, raw,
+                    consensus_score, consensus_abs, agreement_ratio, quality_multiplier,
+                ))
                 
                 # 使用 lastrowid 属性获取 ID（execute 内部已经处理了 RETURNING）
                 memory_id = cur.lastrowid

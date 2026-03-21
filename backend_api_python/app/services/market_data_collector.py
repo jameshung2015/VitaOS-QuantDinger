@@ -1006,7 +1006,7 @@ class MarketDataCollector:
         
         策略（按优先级）：
         1. 结构化API (Finnhub) - 美股首选
-        2. 搜索引擎 (Bocha/Tavily) - 补充搜索
+        2. 搜索引擎 (Tavily/Google/Bing/SerpAPI) - 补充搜索
         3. 情绪分析 - Finnhub 社交媒体情绪
         """
         news_list = []
@@ -1090,7 +1090,7 @@ class MarketDataCollector:
         """
         从搜索引擎获取新闻
         
-        使用增强的搜索服务 (Bocha/Tavily/SerpAPI)
+        使用增强的搜索服务 (Tavily/Google/Bing/SerpAPI)
         """
         news_list = []
         

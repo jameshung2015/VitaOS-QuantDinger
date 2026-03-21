@@ -366,31 +366,6 @@ CREATE INDEX IF NOT EXISTS idx_indicator_codes_user_id ON qd_indicator_codes USI
 CREATE INDEX IF NOT EXISTS idx_indicator_review_status ON qd_indicator_codes USING btree (review_status);
 
 -- =============================================================================
--- 8. AI Decisions
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS qd_ai_decisions (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL DEFAULT 1 REFERENCES qd_users(id) ON DELETE CASCADE,
-    strategy_id INTEGER REFERENCES qd_strategies_trading(id) ON DELETE CASCADE,
-    decision_data TEXT,
-    context_data TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_ai_decisions_user_id ON qd_ai_decisions(user_id);
-
--- =============================================================================
--- 9. Addon Config
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS qd_addon_config (
-    config_key VARCHAR(100) PRIMARY KEY,
-    config_value TEXT,
-    type VARCHAR(20) DEFAULT 'string'
-);
-
--- =============================================================================
 -- 10. Watchlist
 -- =============================================================================
 
@@ -615,56 +590,6 @@ INSERT INTO qd_market_symbols (market, symbol, name, exchange, currency, is_acti
 ON CONFLICT (market, symbol) DO NOTHING;
 
 -- =============================================================================
--- 18. Agent Memories (AI Learning System)
--- =============================================================================
--- Stores agent decision experiences for RAG-style retrieval during analysis.
--- Each agent (trader, risk_analyst, etc.) shares this table but is identified by agent_name.
-
-CREATE TABLE IF NOT EXISTS qd_agent_memories (
-    id SERIAL PRIMARY KEY,
-    agent_name VARCHAR(100) NOT NULL,
-    situation TEXT NOT NULL,
-    recommendation TEXT NOT NULL,
-    result TEXT,
-    returns REAL,
-    market VARCHAR(50),
-    symbol VARCHAR(50),
-    timeframe VARCHAR(20),
-    features_json TEXT,
-    embedding BYTEA,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_agent_memories_agent ON qd_agent_memories(agent_name);
-CREATE INDEX IF NOT EXISTS idx_agent_memories_created ON qd_agent_memories(agent_name, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_agent_memories_market ON qd_agent_memories(agent_name, market, symbol);
-
--- =============================================================================
--- 19. Reflection Records (AI Auto-Verification System)
--- =============================================================================
--- Records analysis predictions for future auto-verification and closed-loop learning.
-
-CREATE TABLE IF NOT EXISTS qd_reflection_records (
-    id SERIAL PRIMARY KEY,
-    market VARCHAR(50) NOT NULL,
-    symbol VARCHAR(50) NOT NULL,
-    initial_price REAL,
-    decision VARCHAR(20),
-    confidence INTEGER,
-    reasoning TEXT,
-    analysis_date TIMESTAMP DEFAULT NOW(),
-    target_check_date TIMESTAMP,
-    status VARCHAR(20) DEFAULT 'PENDING',
-    final_price REAL,
-    actual_return REAL,
-    check_result TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_reflection_status ON qd_reflection_records(status, target_check_date);
-CREATE INDEX IF NOT EXISTS idx_reflection_market ON qd_reflection_records(market, symbol);
-
--- =============================================================================
 -- 19.5. Analysis Memory (Fast AI Analysis Memory System)
 -- =============================================================================
 -- Stores AI analysis results for history, feedback, and learning.
@@ -677,15 +602,15 @@ CREATE TABLE IF NOT EXISTS qd_analysis_memory (
     decision VARCHAR(10) NOT NULL,
     confidence INT DEFAULT 50,
     price_at_analysis DECIMAL(24, 8),
-    entry_price DECIMAL(24, 8),
-    stop_loss DECIMAL(24, 8),
-    take_profit DECIMAL(24, 8),
     summary TEXT,
     reasons JSONB,
-    risks JSONB,
     scores JSONB,
     indicators_snapshot JSONB,
     raw_result JSONB,                           -- Full analysis result for history replay
+    consensus_score DECIMAL(24, 8),
+    consensus_abs DECIMAL(24, 8),
+    agreement_ratio DECIMAL(10, 6),
+    quality_multiplier DECIMAL(10, 6),
     created_at TIMESTAMP DEFAULT NOW(),
     validated_at TIMESTAMP,
     actual_outcome VARCHAR(20),

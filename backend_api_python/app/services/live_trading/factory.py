@@ -84,15 +84,22 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
     if exchange_id == "bitget":
         base_url = _get(exchange_config, "base_url", "baseUrl") or "https://api.bitget.com"
         if mt == "spot":
-            channel_api_code = _get(exchange_config, "channel_api_code", "channelApiCode") or "bntva"
+            channel_api_code = _get(exchange_config, "channel_api_code", "channelApiCode") or "qvz9x"
             return BitgetSpotClient(api_key=api_key, secret_key=secret_key, passphrase=passphrase, base_url=base_url, channel_api_code=channel_api_code)
-        return BitgetMixClient(api_key=api_key, secret_key=secret_key, passphrase=passphrase, base_url=base_url)
+        channel_api_code = _get(exchange_config, "channel_api_code", "channelApiCode") or "qvz9x"
+        return BitgetMixClient(api_key=api_key, secret_key=secret_key, passphrase=passphrase, base_url=base_url, channel_api_code=channel_api_code)
 
     if exchange_id == "bybit":
         base_url = _get(exchange_config, "base_url", "baseUrl") or "https://api.bybit.com"
         category = "spot" if mt == "spot" else "linear"
         recv_window_ms = int(exchange_config.get("recv_window_ms") or exchange_config.get("recvWindow") or 5000)
-        return BybitClient(api_key=api_key, secret_key=secret_key, base_url=base_url, category=category, recv_window_ms=recv_window_ms)
+        return BybitClient(
+            api_key=api_key,
+            secret_key=secret_key,
+            base_url=base_url,
+            category=category,
+            recv_window_ms=recv_window_ms,
+        )
 
     if exchange_id in ("coinbaseexchange", "coinbase_exchange"):
         base_url = _get(exchange_config, "base_url", "baseUrl") or "https://api.exchange.coinbase.com"

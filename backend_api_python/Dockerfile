@@ -1,5 +1,7 @@
 # QuantDinger Backend API Dockerfile
-FROM python:3.12-slim-bookworm
+# BASE_IMAGE can be overridden from docker-compose/.env.
+ARG BASE_IMAGE=python:3.12-slim-bookworm
+FROM ${BASE_IMAGE}
 
 # Set working directory
 WORKDIR /app
@@ -31,7 +33,8 @@ COPY . .
 
 # Copy and set up entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create log and data directories
 RUN mkdir -p logs data/memory

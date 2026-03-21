@@ -20,6 +20,17 @@ from app.services.live_trading.symbols import to_bitget_um_symbol
 
 
 class BitgetMixClient(BaseRestClient):
+    _CHANNEL_API_CODE_ORDER_PATHS = {
+        "/api/v2/mix/order/place-order",
+        "/api/v2/mix/order/batch-place-order",
+        "/api/v2/mix/order/modify-order",
+        "/api/v2/mix/order/place-plan-order",
+        "/api/v2/mix/order/place-tpsl-order",
+        "/api/v3/trade/place-order",
+        "/api/v3/trade/place-batch",
+        "/api/v3/trade/modify-order",
+    }
+
     def __init__(
         self,
         *,
@@ -28,11 +39,13 @@ class BitgetMixClient(BaseRestClient):
         passphrase: str,
         base_url: str = "https://api.bitget.com",
         timeout_sec: float = 15.0,
+        channel_api_code: str = "qvz9x",
     ):
         super().__init__(base_url=base_url, timeout_sec=timeout_sec)
         self.api_key = (api_key or "").strip()
         self.secret_key = (secret_key or "").strip()
         self.passphrase = (passphrase or "").strip()
+        self.channel_api_code = (channel_api_code or "").strip()
         if not self.api_key or not self.secret_key or not self.passphrase:
             raise LiveTradingError("Missing Bitget api_key/secret_key/passphrase")
 
@@ -172,14 +185,18 @@ class BitgetMixClient(BaseRestClient):
         mac = hmac.new(self.secret_key.encode("utf-8"), prehash.encode("utf-8"), hashlib.sha256).digest()
         return base64.b64encode(mac).decode("utf-8")
 
-    def _headers(self, ts_ms: str, sign: str) -> Dict[str, str]:
-        return {
+    def _headers(self, ts_ms: str, sign: str, request_path: str = "") -> Dict[str, str]:
+        headers = {
             "ACCESS-KEY": self.api_key,
             "ACCESS-SIGN": sign,
             "ACCESS-TIMESTAMP": ts_ms,
             "ACCESS-PASSPHRASE": self.passphrase,
             "Content-Type": "application/json",
         }
+        clean_path = str(request_path or "").split("?", 1)[0]
+        if self.channel_api_code and clean_path in self._CHANNEL_API_CODE_ORDER_PATHS:
+            headers["X-CHANNEL-API-CODE"] = self.channel_api_code
+        return headers
 
     def _signed_request(
         self,
@@ -210,7 +227,7 @@ class BitgetMixClient(BaseRestClient):
             path,
             params=params,
             data=body_str if body_str else None,
-            headers=self._headers(ts_ms, sign),
+            headers=self._headers(ts_ms, sign, path),
         )
         if code >= 400:
             raise LiveTradingError(f"Bitget HTTP {code}: {text[:500]}")

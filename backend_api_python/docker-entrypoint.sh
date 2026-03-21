@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # QuantDinger Docker Entrypoint Script
 # Checks and validates SECRET_KEY before starting the application
 

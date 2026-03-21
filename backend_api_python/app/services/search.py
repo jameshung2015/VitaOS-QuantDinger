@@ -3,12 +3,11 @@ Search service v2.0 - 增强版搜索服务
 整合多个搜索引擎，支持 API Key 轮换和故障转移
 
 支持的搜索引擎（按优先级）：
-1. Bocha (博查) - 搜索优化
-2. Tavily - 专为AI设计，免费1000次/月
-3. SerpAPI - Google/Bing 结果抓取
-4. Google CSE - 自定义搜索引擎
-5. Bing Search API
-6. DuckDuckGo - 免费兜底
+1. Tavily - 专为AI设计，免费1000次/月
+2. SerpAPI - Google/Bing 结果抓取
+3. Google CSE - 自定义搜索引擎
+4. Bing Search API
+5. DuckDuckGo - 免费兜底
 
 参考：daily_stock_analysis-main/src/search_service.py
 """
@@ -321,130 +320,6 @@ class TavilySearchProvider(BaseSearchProvider):
                 success=True,
             )
             
-        except Exception as e:
-            return SearchResponse(
-                query=query,
-                results=[],
-                provider=self.name,
-                success=False,
-                error_message=str(e)
-            )
-
-
-class BochaSearchProvider(BaseSearchProvider):
-    """
-    博查搜索引擎
-    
-    特点：
-    - 专为AI优化的中文搜索API
-    - 结果准确、摘要完整
-    - 支持时间范围过滤和AI摘要
-    
-    文档：https://bocha-ai.feishu.cn/wiki/RXEOw02rFiwzGSkd9mUcqoeAnNK
-    """
-    
-    def __init__(self, api_keys: List[str]):
-        super().__init__(api_keys, "Bocha")
-    
-    def _do_search(self, query: str, api_key: str, max_results: int, days: int = 7) -> SearchResponse:
-        """执行博查搜索"""
-        try:
-            url = "https://api.bochaai.com/v1/web-search"
-            
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-            
-            # 确定时间范围
-            freshness = "oneWeek"
-            if days <= 1:
-                freshness = "oneDay"
-            elif days <= 7:
-                freshness = "oneWeek"
-            elif days <= 30:
-                freshness = "oneMonth"
-            else:
-                freshness = "oneYear"
-
-            payload = {
-                "query": query,
-                "freshness": freshness,
-                "summary": True,
-                "count": min(max_results, 50)
-            }
-            
-            response = requests.post(url, headers=headers, json=payload, timeout=15)
-            
-            if response.status_code != 200:
-                error_message = response.text
-                try:
-                    if response.headers.get('content-type', '').startswith('application/json'):
-                        error_data = response.json()
-                        error_message = error_data.get('message', response.text)
-                except:
-                    pass
-                
-                if response.status_code == 403:
-                    error_msg = f"余额不足: {error_message}"
-                elif response.status_code == 401:
-                    error_msg = f"API KEY无效: {error_message}"
-                elif response.status_code == 429:
-                    error_msg = f"请求频率达到限制: {error_message}"
-                else:
-                    error_msg = f"HTTP {response.status_code}: {error_message}"
-                
-                return SearchResponse(
-                    query=query,
-                    results=[],
-                    provider=self.name,
-                    success=False,
-                    error_message=error_msg
-                )
-            
-            data = response.json()
-            
-            if data.get('code') != 200:
-                return SearchResponse(
-                    query=query,
-                    results=[],
-                    provider=self.name,
-                    success=False,
-                    error_message=data.get('msg') or f"API返回错误码: {data.get('code')}"
-                )
-            
-            results = []
-            web_pages = data.get('data', {}).get('webPages', {})
-            value_list = web_pages.get('value', [])
-            
-            for item in value_list[:max_results]:
-                snippet = item.get('summary') or item.get('snippet', '')
-                if snippet:
-                    snippet = snippet[:500]
-                
-                results.append(SearchResult(
-                    title=item.get('name', ''),
-                    snippet=snippet,
-                    url=item.get('url', ''),
-                    source=item.get('siteName') or self._extract_domain(item.get('url', '')),
-                    published_date=item.get('datePublished'),
-                ))
-            
-            return SearchResponse(
-                query=query,
-                results=results,
-                provider=self.name,
-                success=True,
-            )
-            
-        except requests.exceptions.Timeout:
-            return SearchResponse(
-                query=query,
-                results=[],
-                provider=self.name,
-                success=False,
-                error_message="请求超时"
-            )
         except Exception as e:
             return SearchResponse(
                 query=query,
@@ -865,38 +740,32 @@ class SearchService:
         """初始化搜索引擎（按优先级排序）"""
         from app.config import APIKeys
         
-        # 1. Bocha 优先（国内搜索优化）
-        bocha_keys = APIKeys.BOCHA_API_KEYS
-        if bocha_keys:
-            self._providers.append(BochaSearchProvider(bocha_keys))
-            logger.info(f"已配置 Bocha 搜索，共 {len(bocha_keys)} 个 API Key")
-        
-        # 2. Tavily（AI优化搜索）
+        # 1. Tavily（AI优化搜索）
         tavily_keys = APIKeys.TAVILY_API_KEYS
         if tavily_keys:
             self._providers.append(TavilySearchProvider(tavily_keys))
             logger.info(f"已配置 Tavily 搜索，共 {len(tavily_keys)} 个 API Key")
         
-        # 3. SerpAPI
+        # 2. SerpAPI
         serpapi_keys = APIKeys.SERPAPI_KEYS
         if serpapi_keys:
             self._providers.append(SerpAPISearchProvider(serpapi_keys))
             logger.info(f"已配置 SerpAPI 搜索，共 {len(serpapi_keys)} 个 API Key")
         
-        # 4. Google CSE
+        # 3. Google CSE
         google_api_key = self._config.get('google', {}).get('api_key')
         google_cx = self._config.get('google', {}).get('cx')
         if google_api_key and google_cx:
             self._providers.append(GoogleSearchProvider(google_api_key, google_cx))
             logger.info("已配置 Google CSE 搜索")
         
-        # 5. Bing
+        # 4. Bing
         bing_api_key = self._config.get('bing', {}).get('api_key')
         if bing_api_key:
             self._providers.append(BingSearchProvider(bing_api_key))
             logger.info("已配置 Bing 搜索")
         
-        # 6. DuckDuckGo（免费兜底）
+        # 5. DuckDuckGo（免费兜底）
         self._providers.append(DuckDuckGoSearchProvider())
         logger.info("已配置 DuckDuckGo 搜索（免费兜底）")
         

@@ -5,12 +5,12 @@
 **/.git
 .DS_Store
 
-# Do not send local node_modules / build outputs (Docker runs npm ci + build)
+# Do not send unused frontend source build artifacts
 QuantDinger-Vue-src/node_modules
 QuantDinger-Vue-src/dist
 
-# Pre-built copy used for local nginx tests only — image builds from source
-frontend/dist
+# The open-source repo ships prebuilt frontend assets in `frontend/dist`,
+# and the frontend image copies them directly, so keep this directory included.
 
 # Backend & DB not needed for frontend stage
 backend_api_python

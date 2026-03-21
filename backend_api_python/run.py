@@ -47,14 +47,6 @@ def _apply_proxy_env():
     # If user provided explicit proxy URL, honor it.
     proxy_url = (os.getenv('PROXY_URL') or '').strip()
 
-    # If user only provided port, build a URL (common local proxy setups).
-    if not proxy_url:
-        port = (os.getenv('PROXY_PORT') or '').strip()
-        if port:
-            host = (os.getenv('PROXY_HOST') or '127.0.0.1').strip()
-            scheme = (os.getenv('PROXY_SCHEME') or 'socks5h').strip()
-            proxy_url = f"{scheme}://{host}:{port}"
-
     if not proxy_url:
         return
 
@@ -62,9 +54,6 @@ def _apply_proxy_env():
     _set_if_blank('ALL_PROXY', proxy_url)
     _set_if_blank('HTTP_PROXY', proxy_url)
     _set_if_blank('HTTPS_PROXY', proxy_url)
-
-    # CCXT config uses CCXT_PROXY in our codebase.
-    _set_if_blank('CCXT_PROXY', proxy_url)
 
 _apply_proxy_env()
 

@@ -8,19 +8,24 @@
 #   3. docker-compose up -d --build
 #   4. Open http://localhost:8888
 #
-# Frontend image: multi-stage build from QuantDinger-Vue-src (context = repo root).
-# To refresh static files without Docker: cd QuantDinger-Vue-src && npm run build
-#   && rm -rf ../frontend/dist && cp -R dist ../frontend/dist
+# Frontend image: nginx serving prebuilt files from `frontend/dist`.
+# The open-source repo does not require Node.js to build the frontend image.
 #
 # Note: The container will NOT start if SECRET_KEY is using the default value.
 #       This is a security measure to prevent insecure deployments.
+#
+# Docker image sources:
+#   Default uses official Docker Hub images.
+#   To switch source globally, set a single `IMAGE_PREFIX` in project-root `.env`.
+#   Examples: empty (official), `docker.m.daocloud.io/library/`,
+#   `docker.xuanyuan.me/library/`.
 
 services:
   # ========================
   # PostgreSQL Database
   # ========================
   postgres:
-    image: postgres:16-alpine
+    image: ${IMAGE_PREFIX:-}postgres:16-alpine
     container_name: quantdinger-db
     restart: unless-stopped
     environment:
@@ -48,6 +53,8 @@ services:
     build:
       context: ./backend_api_python
       dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${IMAGE_PREFIX:-}python:3.12-slim-bookworm
     container_name: quantdinger-backend
     restart: unless-stopped
     depends_on:
@@ -58,8 +65,8 @@ services:
     volumes:
       - backend_logs:/app/logs
       - backend_data:/app/data
-      # Mount .env for runtime config
-      - ./backend_api_python/.env:/app/.env:ro
+      # Mount .env for runtime config and admin-panel updates
+      - ./backend_api_python/.env:/app/.env
     environment:
       - PYTHON_API_HOST=0.0.0.0
       - PYTHON_API_PORT=5000
@@ -75,12 +82,14 @@ services:
       retries: 3
 
   # ========================
-  # Frontend (Nginx + Vue build from QuantDinger-Vue-src)
+  # Frontend (Nginx serving prebuilt dist)
   # ========================
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        RUNTIME_IMAGE: ${IMAGE_PREFIX:-}nginx:1.25-alpine
     container_name: quantdinger-frontend
     restart: unless-stopped
     ports:

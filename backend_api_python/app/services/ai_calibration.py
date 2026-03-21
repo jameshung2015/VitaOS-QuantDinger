@@ -71,7 +71,6 @@ class AICalibrationService:
                         sell_threshold DECIMAL(10,4) NOT NULL,
                         min_consensus_abs_override DECIMAL(10,4) NOT NULL,
                         quality_hold_threshold DECIMAL(10,4) NOT NULL,
-                        sample_count INT NOT NULL DEFAULT 0,
                         validated_at TIMESTAMP DEFAULT NOW(),
                         created_at TIMESTAMP DEFAULT NOW()
                     );
@@ -281,9 +280,9 @@ class AICalibrationService:
                     INSERT INTO qd_ai_calibration
                       (market, buy_threshold, sell_threshold,
                        min_consensus_abs_override, quality_hold_threshold,
-                       sample_count, validated_at, created_at)
+                       validated_at, created_at)
                     VALUES
-                      (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                      (%s, %s, %s, %s, %s, NOW(), NOW())
                     """,
                     (
                         market,
@@ -291,7 +290,6 @@ class AICalibrationService:
                         sell_threshold,
                         min_consensus_abs_override,
                         quality_hold_threshold,
-                        sample_count,
                     ),
                 )
                 db.commit()

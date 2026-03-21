@@ -22,6 +22,8 @@ from app.services.live_trading.symbols import to_bybit_symbol
 
 
 class BybitClient(BaseRestClient):
+    _DEFAULT_BROKER_REFERER = "Ri001020"
+
     def __init__(
         self,
         *,
@@ -36,6 +38,7 @@ class BybitClient(BaseRestClient):
         self.api_key = (api_key or "").strip()
         self.secret_key = (secret_key or "").strip()
         self.category = (category or "linear").strip().lower()
+        self.broker_referer = self._DEFAULT_BROKER_REFERER
         if self.category not in ("linear", "spot"):
             self.category = "linear"
         try:
@@ -155,8 +158,17 @@ class BybitClient(BaseRestClient):
     def _sign(self, prehash: str) -> str:
         return hmac.new(self.secret_key.encode("utf-8"), prehash.encode("utf-8"), hashlib.sha256).hexdigest()
 
+    @staticmethod
+    def _resolve_position_idx(pos_side: str) -> Optional[int]:
+        ps = str(pos_side or "").strip().lower()
+        if ps == "long":
+            return 1
+        if ps == "short":
+            return 2
+        return None
+
     def _headers(self, ts_ms: str, sign: str) -> Dict[str, str]:
-        return {
+        headers = {
             "X-BAPI-API-KEY": self.api_key,
             "X-BAPI-SIGN": sign,
             "X-BAPI-TIMESTAMP": ts_ms,
@@ -164,6 +176,9 @@ class BybitClient(BaseRestClient):
             "X-BAPI-SIGN-TYPE": "2",
             "Content-Type": "application/json",
         }
+        if self.broker_referer:
+            headers["Referer"] = self.broker_referer
+        return headers
 
     def _signed_request(
         self,
@@ -277,6 +292,37 @@ class BybitClient(BaseRestClient):
             return (Decimal("0"), qty_precision)
         return (q, qty_precision)
 
+    def _normalize_price(self, *, symbol: str, price: float) -> Tuple[Decimal, Optional[int]]:
+        p = self._to_dec(price)
+        if p <= 0:
+            return (Decimal("0"), None)
+        sym = to_bybit_symbol(symbol)
+        try:
+            info = self.get_instrument_info(category=self.category, symbol=sym) or {}
+        except Exception:
+            info = {}
+        pf = (info.get("priceFilter") if isinstance(info, dict) else None) or {}
+        tick = self._to_dec((pf or {}).get("tickSize") or "0")
+        if tick > 0:
+            p = self._floor_to_step(p, tick)
+
+        price_precision = None
+        if tick > 0:
+            try:
+                tick_normalized = tick.normalize()
+                tick_str = str(tick_normalized)
+                if "." in tick_str:
+                    price_precision = len(tick_str.split(".")[1])
+                    if price_precision < 0:
+                        price_precision = 0
+                    if price_precision > 18:
+                        price_precision = 18
+                else:
+                    price_precision = 0
+            except Exception:
+                pass
+        return (p, price_precision)
+
     def place_market_order(
         self,
         *,
@@ -284,6 +330,7 @@ class BybitClient(BaseRestClient):
         side: str,
         qty: float,
         reduce_only: bool = False,
+        pos_side: str = "",
         client_order_id: Optional[str] = None,
     ) -> LiveOrderResult:
         sym = to_bybit_symbol(symbol)
@@ -300,8 +347,13 @@ class BybitClient(BaseRestClient):
             "side": "Buy" if sd == "buy" else "Sell",
             "orderType": "Market",
             "qty": self._dec_str(q_dec, strict_precision=qty_precision),
-            "timeInForce": "GTC",
+            "timeInForce": "IOC",
         }
+        if self.category == "spot":
+            body["marketUnit"] = "baseCoin"
+        pos_idx = self._resolve_position_idx(pos_side) if self.category == "linear" else None
+        if pos_idx is not None:
+            body["positionIdx"] = pos_idx
         if reduce_only and self.category == "linear":
             body["reduceOnly"] = True
         if client_order_id:
@@ -319,6 +371,7 @@ class BybitClient(BaseRestClient):
         qty: float,
         price: float,
         reduce_only: bool = False,
+        pos_side: str = "",
         client_order_id: Optional[str] = None,
     ) -> LiveOrderResult:
         sym = to_bybit_symbol(symbol)
@@ -326,21 +379,27 @@ class BybitClient(BaseRestClient):
         if sd not in ("buy", "sell"):
             raise LiveTradingError(f"Invalid side: {side}")
         q_req = float(qty or 0.0)
-        px = float(price or 0.0)
-        if q_req <= 0 or px <= 0:
+        px_req = float(price or 0.0)
+        if q_req <= 0 or px_req <= 0:
             raise LiveTradingError("Invalid qty/price")
         q_dec, qty_precision = self._normalize_qty(symbol=symbol, qty=q_req)
+        px_dec, price_precision = self._normalize_price(symbol=symbol, price=px_req)
         if float(q_dec or 0) <= 0:
             raise LiveTradingError(f"Invalid qty (below step/min): requested={q_req}")
+        if float(px_dec or 0) <= 0:
+            raise LiveTradingError(f"Invalid price (below tick/min): requested={px_req}")
         body: Dict[str, Any] = {
             "category": self.category,
             "symbol": sym,
             "side": "Buy" if sd == "buy" else "Sell",
             "orderType": "Limit",
             "qty": self._dec_str(q_dec, strict_precision=qty_precision),
-            "price": str(px),
+            "price": self._dec_str(px_dec, strict_precision=price_precision),
             "timeInForce": "GTC",
         }
+        pos_idx = self._resolve_position_idx(pos_side) if self.category == "linear" else None
+        if pos_idx is not None:
+            body["positionIdx"] = pos_idx
         if reduce_only and self.category == "linear":
             body["reduceOnly"] = True
         if client_order_id:
@@ -404,13 +463,28 @@ class BybitClient(BaseRestClient):
             # Extract fee from cumExecFee (Bybit API field for cumulative execution fee)
             fee = 0.0
             fee_ccy = ""
-            try:
-                fee = abs(float(last.get("cumExecFee") or 0.0))
-            except Exception:
-                fee = 0.0
-            # Bybit linear contracts are settled in USDT
-            if fee > 0:
-                fee_ccy = "USDT"
+            fee_detail = last.get("cumFeeDetail") if isinstance(last, dict) else None
+            if isinstance(fee_detail, dict) and fee_detail:
+                total_fee = 0.0
+                fee_keys = []
+                for k, v in fee_detail.items():
+                    try:
+                        fv = abs(float(v or 0.0))
+                    except Exception:
+                        fv = 0.0
+                    if fv > 0:
+                        total_fee += fv
+                        fee_keys.append(str(k))
+                fee = total_fee
+                if len(fee_keys) == 1:
+                    fee_ccy = fee_keys[0]
+            if fee <= 0:
+                try:
+                    fee = abs(float(last.get("cumExecFee") or 0.0))
+                except Exception:
+                    fee = 0.0
+                if fee > 0 and self.category == "linear":
+                    fee_ccy = "USDT"
             if filled > 0 and avg_price > 0:
                 return {"filled": filled, "avg_price": avg_price, "fee": fee, "fee_ccy": fee_ccy, "status": status, "order": last}
             if status.lower() in ("filled", "cancelled", "canceled", "rejected"):

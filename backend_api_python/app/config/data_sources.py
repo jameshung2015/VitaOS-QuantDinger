@@ -130,30 +130,13 @@ class MetaCCXTConfig(type):
 
     @property
     def PROXY(cls):
-        from app.utils.config_loader import load_addon_config
-        val = load_addon_config().get('ccxt', {}).get('proxy')
-        if val:
-            return val
-
-        # 1) Direct CCXT proxy env
-        ccxt_proxy = (os.getenv('CCXT_PROXY') or '').strip()
-        if ccxt_proxy:
-            return ccxt_proxy
-
-        # 2) Local proxy helpers from backend_api_python/.env
+        # 1) Local proxy helpers from backend_api_python/.env
         # PROXY_URL has the highest priority if provided.
         proxy_url = (os.getenv('PROXY_URL') or '').strip()
         if proxy_url:
             return proxy_url
 
-        # Build from parts: PROXY_SCHEME/PROXY_HOST/PROXY_PORT
-        proxy_port = (os.getenv('PROXY_PORT') or '').strip()
-        if proxy_port:
-            proxy_scheme = (os.getenv('PROXY_SCHEME') or 'socks5h').strip()
-            proxy_host = (os.getenv('PROXY_HOST') or '127.0.0.1').strip()
-            return f"{proxy_scheme}://{proxy_host}:{proxy_port}"
-
-        # 3) Standard proxy envs (fallback)
+        # 2) Standard proxy envs (fallback)
         for key in ['HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY']:
             v = (os.getenv(key) or '').strip()
             if v:

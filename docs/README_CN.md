@@ -68,25 +68,40 @@
 git clone https://github.com/brokermr810/QuantDinger.git
 cd QuantDinger
 
-# 2. 配置（编辑管理员密码和AI API密钥）
+# 2. 复制后端配置
 cp backend_api_python/env.example backend_api_python/.env
 
-# 3. 重要：生成并设置安全的 SECRET_KEY
-# Linux/Mac:
-python3 -c "import secrets; print(secrets.token_hex(32))" | xargs -I {} sed -i 's|SECRET_KEY=.*|SECRET_KEY={}|' backend_api_python/.env
-
-# 或手动编辑 backend_api_python/.env 并替换 SECRET_KEY 值
-# Windows PowerShell:
-# $key = python -c "import secrets; print(secrets.token_hex(32))"
-# (Get-Content backend_api_python\.env) -replace 'SECRET_KEY=.*', "SECRET_KEY=$key" | Set-Content backend_api_python\.env
+# 3. 生成并写入安全的 SECRET_KEY
+./scripts/generate-secret-key.sh
 
 # 4. 启动！
 docker-compose up -d --build
 ```
 
+> **Linux/macOS**:
+> - 复制后端配置：
+>   `cp backend_api_python/env.example backend_api_python/.env`
+> - 如果需要更多高级配置，直接查看这个文件下半部分的 “Advanced / rarely changed”：
+>   `backend_api_python/env.example`
+> - 可选：如果你所在网络拉取 Docker Hub 较慢或不可达，再复制项目根镜像配置：
+>   `cp .env.example .env`
+> - 生成并写入 `SECRET_KEY`：
+>   `./scripts/generate-secret-key.sh`
+> - 启动：
+>   `docker-compose up -d --build`
+
 > **Windows PowerShell**: 
-> - 复制：`Copy-Item backend_api_python\env.example -Destination backend_api_python\.env`
-> - 生成 SECRET_KEY：`python -c "import secrets; print(secrets.token_hex(32))"` 然后手动编辑 `.env`
+> - 复制后端配置：
+>   `Copy-Item backend_api_python\env.example -Destination backend_api_python\.env`
+> - 如果需要更多高级配置，直接查看这个文件下半部分的 “Advanced / rarely changed”：
+>   `backend_api_python\env.example`
+> - 可选：如果你所在网络拉取 Docker Hub 较慢或不可达，再复制项目根镜像配置：
+>   `Copy-Item .env.example -Destination .env`
+> - 生成并写入 `SECRET_KEY`：
+>   `$key = py -c "import secrets; print(secrets.token_hex(32))"`
+>   `(Get-Content backend_api_python\.env) -replace '^SECRET_KEY=.*$', "SECRET_KEY=$key" | Set-Content backend_api_python\.env -Encoding UTF8`
+> - 启动：
+>   `docker-compose up -d --build`
 
 > **⚠️ 安全提示**：如果 `SECRET_KEY` 使用默认值，容器将**不会启动**。这可以防止不安全的部署。
 
@@ -157,6 +172,42 @@ cat backup.sql | docker exec -i quantdinger-db psql -U quantdinger quantdinger
 ```ini
 FRONTEND_PORT=3000          # 默认：8888
 BACKEND_PORT=127.0.0.1:5001 # 默认：5000
+```
+
+**可选镜像源** — 默认直连 Docker Hub。如果你所在地区/网络无法拉取基础镜像，可复制 `.env.example` 为 `.env`，只改一行：
+```ini
+IMAGE_PREFIX=docker.m.daocloud.io/library/
+```
+
+其他常见选择：
+```ini
+IMAGE_PREFIX=
+IMAGE_PREFIX=docker.xuanyuan.me/library/
+```
+
+**Docker 常见问题**
+```text
+1. 镜像源切换由项目根目录 `.env` 控制，不是 `backend_api_python/.env`。
+2. 当前开源仓库已内置 `frontend/dist`，前端部署不再依赖 Node.js。
+3. Windows 下如果后端日志出现：
+   exec /usr/local/bin/docker-entrypoint.sh: no such file or directory
+   通常是镜像层里的 shell/换行符兼容性问题。可执行：
+   docker-compose build --no-cache backend
+4. 如果前端日志出现：
+   host not found in upstream "backend"
+   一般是后端先启动失败导致的连锁报错。先修复后端，再执行：
+   docker-compose restart frontend
+5. 如果前端构建报错：
+   COPY frontend/dist ... not found
+   请检查 `.dockerignore`，确认没有把 `frontend/dist` 排除在 Docker 构建上下文之外。
+6. 如果后台配置页点击保存时报错：
+   Read-only file system: '/app/.env'
+   请检查 `docker-compose.yml`，确认 `backend_api_python/.env` 不是以只读方式挂载。
+7. Docker 部署下如果需要走本机代理，不要使用 `127.0.0.1`，应改为 `host.docker.internal`。
+   例如：
+   PROXY_URL=socks5h://host.docker.internal:10808
+8. 如果代理修复后仍出现某些交易对 "not found" 日志，通常是交易所符号映射问题
+   （例如代币更名），不一定是网络故障。
 ```
 
 </details>
@@ -340,6 +391,14 @@ flowchart TB
 | **外汇** | MetaTrader 5 (MT5)、OANDA | ✅ 通过MT5 |
 | **期货** | 交易所API | ⚡ 数据 + 通知 |
 
+### 交易所返佣入口
+
+如果你本来就准备开通交易所账户，建议直接走返佣链接。很多交易用户本来就会主动找“手续费减免/返佣链接”，而下面这些链接都可以直接享受 20% 手续费减免，不增加任何额外成本。
+
+- **OKX**：[开户即享 20% 手续费减免](https://www.promooboost.com/join/QUANTDINGER)
+- **Bitget**：[开户即享 20% 手续费减免](https://partner.bitget.com/bg/dinger)
+- **Bitget（备用链接）**：[备用 20% 手续费减免注册链接](https://partner.hdmune.cn/bg/7r4xz8kd)
+
 ---
 
 ## 🏗️ 架构与配置
@@ -397,7 +456,8 @@ QuantDinger/
 <details>
 <summary><b>⚙️ 配置参考（.env）</b></summary>
 
-使用 `backend_api_python/env.example` 作为模板：
+使用 `backend_api_python/env.example` 作为精简模板。
+文件上半部分适合首次部署，下面的 “Advanced / rarely changed” 区域用于可选的高级调优。
 
 | 类别 | 关键变量 |
 |----------|-----------|
@@ -408,7 +468,7 @@ QuantDinger/
 | **安全** | `TURNSTILE_SITE_KEY`、`ENABLE_REGISTRATION` |
 | **会员** | `MEMBERSHIP_MONTHLY_PRICE_USD`、`MEMBERSHIP_MONTHLY_CREDITS` |
 | **USDT支付** | `USDT_PAY_ENABLED`、`USDT_TRC20_XPUB`、`TRONGRID_API_KEY` |
-| **代理** | `PROXY_PORT` 或 `PROXY_URL` |
+| **代理** | `PROXY_URL` |
 | **工作器** | `ENABLE_PENDING_ORDER_WORKER`、`ENABLE_PORTFOLIO_MONITOR` |
 
 </details>
@@ -440,6 +500,7 @@ QuantDinger/
 |----------|-------------|
 | [更新日志](docs/CHANGELOG.md) | 版本历史和迁移说明 |
 | [多用户设置](docs/multi-user-setup.md) | PostgreSQL多用户部署 |
+| [云服务器部署](docs/CLOUD_DEPLOYMENT_CN.md) | 云服务器部署、域名、HTTPS 与反向代理 |
 
 ### 策略开发
 

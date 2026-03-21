@@ -70,25 +70,40 @@
 git clone https://github.com/brokermr810/QuantDinger.git
 cd QuantDinger
 
-# 2. Configure (edit admin password & AI API key)
+# 2. Copy backend config
 cp backend_api_python/env.example backend_api_python/.env
 
-# 3. IMPORTANT: Generate and set a secure SECRET_KEY
-# Linux/Mac:
-python3 -c "import secrets; print(secrets.token_hex(32))" | xargs -I {} sed -i 's|SECRET_KEY=.*|SECRET_KEY={}|' backend_api_python/.env
-
-# Or manually edit backend_api_python/.env and replace SECRET_KEY value
-# Windows PowerShell:
-# $key = python -c "import secrets; print(secrets.token_hex(32))"
-# (Get-Content backend_api_python\.env) -replace 'SECRET_KEY=.*', "SECRET_KEY=$key" | Set-Content backend_api_python\.env
+# 3. Generate and write a secure SECRET_KEY
+./scripts/generate-secret-key.sh
 
 # 4. Launch!
 docker-compose up -d --build
 ```
 
+> **Linux/macOS**:
+> - Copy backend config:
+>   `cp backend_api_python/env.example backend_api_python/.env`
+> - Need more knobs? Scroll to the lower "Advanced / rarely changed" section inside:
+>   `backend_api_python/env.example`
+> - Optional: if Docker Hub is slow/unreachable in your network, copy root Docker config:
+>   `cp .env.example .env`
+> - Generate and write `SECRET_KEY`:
+>   `./scripts/generate-secret-key.sh`
+> - Launch:
+>   `docker-compose up -d --build`
+
 > **Windows PowerShell**: 
-> - Copy: `Copy-Item backend_api_python\env.example -Destination backend_api_python\.env`
-> - Generate SECRET_KEY: `python -c "import secrets; print(secrets.token_hex(32))"` then edit `.env` manually
+> - Copy backend config:
+>   `Copy-Item backend_api_python\env.example -Destination backend_api_python\.env`
+> - Need more knobs? Scroll to the lower "Advanced / rarely changed" section inside:
+>   `backend_api_python\env.example`
+> - Optional: if Docker Hub is slow/unreachable in your network, copy root Docker config:
+>   `Copy-Item .env.example -Destination .env`
+> - Generate and write `SECRET_KEY`:
+>   `$key = py -c "import secrets; print(secrets.token_hex(32))"`
+>   `(Get-Content backend_api_python\.env) -replace '^SECRET_KEY=.*$', "SECRET_KEY=$key" | Set-Content backend_api_python\.env -Encoding UTF8`
+> - Launch:
+>   `docker-compose up -d --build`
 
 > **⚠️ Security Note**: The container will **NOT start** if `SECRET_KEY` is using the default value. This prevents insecure deployments.
 
@@ -159,6 +174,42 @@ cat backup.sql | docker exec -i quantdinger-db psql -U quantdinger quantdinger
 ```ini
 FRONTEND_PORT=3000          # Default: 8888
 BACKEND_PORT=127.0.0.1:5001 # Default: 5000
+```
+
+**Alternative image sources** — Default uses Docker Hub. If pulling base images fails in your region/network, copy `.env.example` to `.env` and change one line:
+```ini
+IMAGE_PREFIX=docker.m.daocloud.io/library/
+```
+
+Other common choices:
+```ini
+IMAGE_PREFIX=
+IMAGE_PREFIX=docker.xuanyuan.me/library/
+```
+
+**Docker troubleshooting**
+```text
+1. Image source switching is controlled by the project-root `.env`, not `backend_api_python/.env`.
+2. The open-source repo ships prebuilt frontend files in `frontend/dist`, so frontend deployment does not require Node.js.
+3. On Windows, if backend logs show:
+   exec /usr/local/bin/docker-entrypoint.sh: no such file or directory
+   it is usually caused by shell/line-ending compatibility in the image layer. Rebuild the backend image with:
+   docker-compose build --no-cache backend
+4. If frontend logs show:
+   host not found in upstream "backend"
+   it usually means the backend container failed first. Fix backend, then restart frontend:
+   docker-compose restart frontend
+5. If frontend build fails with:
+   COPY frontend/dist ... not found
+   check `.dockerignore` and make sure `frontend/dist` is NOT excluded from the Docker build context.
+6. If saving settings from the admin panel fails with:
+   Read-only file system: '/app/.env'
+   make sure `backend_api_python/.env` is mounted read-write in `docker-compose.yml`.
+7. For Docker deployments, a local proxy must use `host.docker.internal`, not `127.0.0.1`.
+   Example:
+   PROXY_URL=socks5h://host.docker.internal:10808
+8. If exchange logs say a symbol is "not found" after proxy/network fixes, it may be a market-symbol mapping issue
+   on that exchange (for example, renamed tokens), not a general network failure.
 ```
 
 </details>
@@ -370,6 +421,14 @@ flowchart TB
 | **Forex** | MetaTrader 5 (MT5), OANDA | ✅ Via MT5 |
 | **Futures** | Exchange APIs | ⚡ Data + Notify |
 
+### Exchange Rebate Links
+
+If you are opening a new exchange account, use a rebate link from the start. Many traders actively look for fee-rebate links anyway, and these links give you a straightforward 20% trading fee discount at no extra cost.
+
+- **OKX**: [Open account with 20% fee rebate](https://www.promooboost.com/join/QUANTDINGER)
+- **Bitget**: [Open account with 20% fee rebate](https://partner.bitget.com/bg/dinger)
+- **Bitget (backup link)**: [Alternate 20% fee rebate signup link](https://partner.hdmune.cn/bg/7r4xz8kd)
+
 ---
 
 ## 🏗️ Architecture & Configuration
@@ -427,7 +486,8 @@ QuantDinger/
 <details>
 <summary><b>⚙️ Configuration Reference (.env)</b></summary>
 
-Use `backend_api_python/env.example` as template:
+Use `backend_api_python/env.example` as the simplified template.
+The upper part is for first-time deployment, and the lower "Advanced / rarely changed" section contains optional tuning.
 
 | Category | Key Variables |
 |----------|-----------|
@@ -438,7 +498,7 @@ Use `backend_api_python/env.example` as template:
 | **Security** | `TURNSTILE_SITE_KEY`, `ENABLE_REGISTRATION` |
 | **Membership** | `MEMBERSHIP_MONTHLY_PRICE_USD`, `MEMBERSHIP_MONTHLY_CREDITS` |
 | **USDT Payment** | `USDT_PAY_ENABLED`, `USDT_TRC20_XPUB`, `TRONGRID_API_KEY` |
-| **Proxy** | `PROXY_PORT` or `PROXY_URL` |
+| **Proxy** | `PROXY_URL` |
 | **Workers** | `ENABLE_PENDING_ORDER_WORKER`, `ENABLE_PORTFOLIO_MONITOR` |
 
 </details>
@@ -470,6 +530,7 @@ All detailed guides are in the [`docs/`](docs/) folder:
 |----------|-------------|
 | [Changelog](docs/CHANGELOG.md) | Version history & migration notes |
 | [Multi-User Setup](docs/multi-user-setup.md) | PostgreSQL multi-user deployment |
+| [Cloud Deployment](docs/CLOUD_DEPLOYMENT_EN.md) | Cloud server deployment with domain, HTTPS, and reverse proxy |
 
 ### Strategy Development
 

@@ -65,7 +65,7 @@ CONFIG_SCHEMA = {
 
     # ==================== 2. AI/LLM 配置 ====================
     'ai': {
-        'title': 'AI / LLM Configuration',
+        'title': 'AI / LLM & Search',
         'icon': 'robot',
         'order': 2,
         'items': [
@@ -213,20 +213,72 @@ CONFIG_SCHEMA = {
                 'description': 'Model creativity (0-1). Lower = more deterministic'
             },
             {
-                'key': 'AI_MODELS_JSON',
-                'label': 'Custom Models (JSON)',
-                'type': 'text',
-                'default': '{}',
-                'required': False,
-                'description': 'Custom model list in JSON format for model selector'
-            },
-            {
                 'key': 'AI_ANALYSIS_CONSENSUS_TIMEFRAMES',
                 'label': 'Consensus Timeframes',
                 'type': 'text',
                 'default': '1D,4H',
                 'required': False,
                 'description': 'Multi-timeframe consensus for fast AI analysis. Comma-separated, e.g. "1D,4H"'
+            },
+            {
+                'key': 'SEARCH_PROVIDER',
+                'label': 'Search Provider',
+                'type': 'select',
+                'options': ['tavily', 'google', 'bing', 'none'],
+                'default': 'google',
+                'description': 'News / web search provider used by AI analysis. Configure both LLM and search to get full AI analysis results'
+            },
+            {
+                'key': 'SEARCH_MAX_RESULTS',
+                'label': 'Search Max Results',
+                'type': 'number',
+                'default': '10',
+                'description': 'Maximum number of search/news results returned per AI analysis request'
+            },
+            {
+                'key': 'TAVILY_API_KEYS',
+                'label': 'Tavily API Keys',
+                'type': 'password',
+                'required': False,
+                'link': 'https://tavily.com/',
+                'link_text': 'settings.link.getApiKey',
+                'description': 'Tavily search API keys (comma-separated). Recommended lightweight search source for AI analysis'
+            },
+            {
+                'key': 'SEARCH_GOOGLE_API_KEY',
+                'label': 'Google Search API Key',
+                'type': 'password',
+                'required': False,
+                'link': 'https://console.cloud.google.com/apis/credentials',
+                'link_text': 'settings.link.getApiKey',
+                'description': 'Google Custom Search JSON API key'
+            },
+            {
+                'key': 'SEARCH_GOOGLE_CX',
+                'label': 'Google Search Engine ID (CX)',
+                'type': 'text',
+                'required': False,
+                'link': 'https://programmablesearchengine.google.com/',
+                'link_text': 'settings.link.getApiKey',
+                'description': 'Google Programmable Search Engine ID'
+            },
+            {
+                'key': 'SEARCH_BING_API_KEY',
+                'label': 'Bing Search API Key',
+                'type': 'password',
+                'required': False,
+                'link': 'https://portal.azure.com/',
+                'link_text': 'settings.link.getApiKey',
+                'description': 'Microsoft Bing Web Search API key'
+            },
+            {
+                'key': 'SERPAPI_KEYS',
+                'label': 'SerpAPI Keys',
+                'type': 'password',
+                'required': False,
+                'link': 'https://serpapi.com/',
+                'link_text': 'settings.link.getApiKey',
+                'description': 'SerpAPI keys (comma-separated)'
             },
         ]
     },
@@ -269,13 +321,6 @@ CONFIG_SCHEMA = {
                 'link': 'https://github.com/ccxt/ccxt#supported-cryptocurrency-exchange-markets',
                 'link_text': 'settings.link.supportedExchanges',
                 'description': 'Default exchange for crypto data (binance, coinbase, okx, etc.)'
-            },
-            {
-                'key': 'CCXT_PROXY',
-                'label': 'Crypto Data Proxy',
-                'type': 'text',
-                'required': False,
-                'description': 'Proxy URL for crypto data requests (e.g. socks5h://127.0.0.1:1080)'
             },
             {
                 'key': 'FINNHUB_API_KEY',
@@ -422,42 +467,7 @@ CONFIG_SCHEMA = {
                 'label': 'Proxy URL',
                 'type': 'text',
                 'required': False,
-                'description': 'Global proxy URL (e.g. socks5h://127.0.0.1:1080 or http://proxy:8080)'
-            },
-        ]
-    },
-
-    # ==================== 9. 搜索配置 ====================
-    'search': {
-        'title': 'Web Search',
-        'icon': 'search',
-        'order': 9,
-        'items': [
-            {
-                'key': 'SEARCH_PROVIDER',
-                'label': 'Search Provider',
-                'type': 'select',
-                'options': ['bocha', 'tavily', 'google', 'bing', 'none'],
-                'default': 'bocha',
-                'description': 'Web search provider for AI research features'
-            },
-            {
-                'key': 'TAVILY_API_KEYS',
-                'label': 'Tavily API Keys',
-                'type': 'password',
-                'required': False,
-                'link': 'https://tavily.com/',
-                'link_text': 'settings.link.getApiKey',
-                'description': 'Tavily Search API keys (comma-separated). Free 1000 req/month'
-            },
-            {
-                'key': 'BOCHA_API_KEYS',
-                'label': 'Bocha API Keys',
-                'type': 'password',
-                'required': False,
-                'link': 'https://bochaai.com/',
-                'link_text': 'settings.link.getApiKey',
-                'description': 'Bocha Search API keys (comma-separated)'
+                'description': 'Global outbound proxy URL. Used by requests and by crypto data requests when a proxy is needed.'
             },
         ]
     },
@@ -545,13 +555,6 @@ CONFIG_SCHEMA = {
                 'type': 'boolean',
                 'default': 'False',
                 'description': 'Enable billing system. Users need credits to use certain features'
-            },
-            {
-                'key': 'BILLING_VIP_BYPASS',
-                'label': 'VIP Bypass (Legacy)',
-                'type': 'boolean',
-                'default': 'False',
-                'description': 'Legacy switch. If enabled, VIP users bypass ALL feature credit costs. Recommended OFF: VIP should only unlock VIP-free indicators.'
             },
 
             # ===== Membership Plans (3 tiers) =====
@@ -685,13 +688,6 @@ CONFIG_SCHEMA = {
                 'description': 'Credits per portfolio AI monitoring run'
             },
             {
-                'key': 'RECHARGE_TELEGRAM_URL',
-                'label': 'Recharge Telegram URL',
-                'type': 'text',
-                'default': 'https://t.me/your_support_bot',
-                'description': 'Telegram URL for recharge inquiries'
-            },
-            {
                 'key': 'CREDITS_REGISTER_BONUS',
                 'label': 'Register Bonus',
                 'type': 'number',
@@ -708,28 +704,6 @@ CONFIG_SCHEMA = {
         ]
     },
 
-    # ==================== 12. 应用功能 ====================
-    'app': {
-        'title': 'Application',
-        'icon': 'appstore',
-        'order': 12,
-        'items': [
-            {
-                'key': 'CORS_ORIGINS',
-                'label': 'CORS Origins',
-                'type': 'text',
-                'default': '*',
-                'description': 'Allowed CORS origins (* for all, or comma-separated URLs)'
-            },
-            {
-                'key': 'ENABLE_AI_ANALYSIS',
-                'label': 'Enable AI Analysis',
-                'type': 'boolean',
-                'default': 'True',
-                'description': 'Enable AI-powered market analysis features'
-            },
-        ]
-    },
 }
 
 

@@ -23,6 +23,15 @@ from app.services.live_trading.symbols import to_bitget_um_symbol
 
 
 class BitgetSpotClient(BaseRestClient):
+    _CHANNEL_API_CODE_ORDER_PATHS = {
+        "/api/v2/spot/trade/place-order",
+        "/api/v2/spot/trade/batch-orders",
+        "/api/v2/spot/trade/place-plan-order",
+        "/api/v3/trade/place-order",
+        "/api/v3/trade/place-batch",
+        "/api/v3/trade/modify-order",
+    }
+
     def __init__(
         self,
         *,
@@ -31,7 +40,7 @@ class BitgetSpotClient(BaseRestClient):
         passphrase: str,
         base_url: str = "https://api.bitget.com",
         timeout_sec: float = 15.0,
-        channel_api_code: str = "bntva",
+        channel_api_code: str = "qvz9x",
     ):
         super().__init__(base_url=base_url, timeout_sec=timeout_sec)
         self.api_key = (api_key or "").strip()
@@ -150,7 +159,7 @@ class BitgetSpotClient(BaseRestClient):
         mac = hmac.new(self.secret_key.encode("utf-8"), prehash.encode("utf-8"), hashlib.sha256).digest()
         return base64.b64encode(mac).decode("utf-8")
 
-    def _headers(self, ts_ms: str, sign: str) -> Dict[str, str]:
+    def _headers(self, ts_ms: str, sign: str, request_path: str = "") -> Dict[str, str]:
         h = {
             "ACCESS-KEY": self.api_key,
             "ACCESS-SIGN": sign,
@@ -158,7 +167,8 @@ class BitgetSpotClient(BaseRestClient):
             "ACCESS-PASSPHRASE": self.passphrase,
             "Content-Type": "application/json",
         }
-        if self.channel_api_code:
+        clean_path = str(request_path or "").split("?", 1)[0]
+        if self.channel_api_code and clean_path in self._CHANNEL_API_CODE_ORDER_PATHS:
             h["X-CHANNEL-API-CODE"] = self.channel_api_code
         return h
 
@@ -188,7 +198,7 @@ class BitgetSpotClient(BaseRestClient):
             path,
             params=params,
             data=body_str if body_str else None,
-            headers=self._headers(ts_ms, sign),
+            headers=self._headers(ts_ms, sign, path),
         )
         if code >= 400:
             raise LiveTradingError(f"BitgetSpot HTTP {code}: {text[:500]}")

@@ -1386,6 +1386,7 @@ class PendingOrderWorker:
                         qty=remaining,
                         price=limit_price,
                         reduce_only=reduce_only,
+                        pos_side=pos_side,
                         client_order_id=limit_client_oid,
                     )
                 elif isinstance(client, CoinbaseExchangeClient):
@@ -1718,6 +1719,7 @@ class PendingOrderWorker:
                         side=side,
                         qty=remaining,
                         reduce_only=reduce_only,
+                        pos_side=pos_side,
                         client_order_id=market_client_oid,
                     )
                 elif isinstance(client, CoinbaseExchangeClient):
