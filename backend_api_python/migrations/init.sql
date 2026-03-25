@@ -199,6 +199,8 @@ CREATE TABLE IF NOT EXISTS qd_strategies_trading (
     decide_interval INTEGER DEFAULT 300,
     strategy_group_id VARCHAR(100) DEFAULT '',
     group_base_name VARCHAR(255) DEFAULT '',
+    strategy_mode VARCHAR(20) DEFAULT 'signal',
+    strategy_code TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -206,6 +208,25 @@ CREATE TABLE IF NOT EXISTS qd_strategies_trading (
 CREATE INDEX IF NOT EXISTS idx_strategies_user_id ON qd_strategies_trading(user_id);
 CREATE INDEX IF NOT EXISTS idx_strategies_status ON qd_strategies_trading(status);
 CREATE INDEX IF NOT EXISTS idx_strategies_group_id ON qd_strategies_trading(strategy_group_id);
+
+-- Add strategy_mode and strategy_code columns (script strategy support)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'qd_strategies_trading' AND column_name = 'strategy_mode'
+    ) THEN
+        ALTER TABLE qd_strategies_trading ADD COLUMN strategy_mode VARCHAR(20) DEFAULT 'signal';
+        RAISE NOTICE 'Added strategy_mode column to qd_strategies_trading';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'qd_strategies_trading' AND column_name = 'strategy_code'
+    ) THEN
+        ALTER TABLE qd_strategies_trading ADD COLUMN strategy_code TEXT DEFAULT '';
+        RAISE NOTICE 'Added strategy_code column to qd_strategies_trading';
+    END IF;
+END$$;
 
 -- Add last_rebalance_at column for cross-sectional strategies (if not exists)
 DO $$

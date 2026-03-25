@@ -1274,15 +1274,21 @@ class BacktestService:
         signals = pd.Series(0, index=df.index)
         
         try:
-            # Prepare execution environment
+            # Reset DatetimeIndex to integer so user code can use df.at[0, ...] or df.iloc[0, ...]
+            df_for_exec = df.copy()
+            if isinstance(df_for_exec.index, pd.DatetimeIndex):
+                df_for_exec = df_for_exec.reset_index(drop=False)
+                if 'time' not in df_for_exec.columns:
+                    df_for_exec.rename(columns={df_for_exec.columns[0]: 'time'}, inplace=True)
+
             local_vars = {
-                'df': df.copy(),
-                'open': df['open'],
-                'high': df['high'],
-                'low': df['low'],
-                'close': df['close'],
-                'volume': df['volume'],
-                'signals': signals,
+                'df': df_for_exec,
+                'open': df_for_exec['open'],
+                'high': df_for_exec['high'],
+                'low': df_for_exec['low'],
+                'close': df_for_exec['close'],
+                'volume': df_for_exec['volume'],
+                'signals': pd.Series(0, index=df_for_exec.index),
                 'np': np,
                 'pd': pd,
             }
@@ -1366,8 +1372,13 @@ import pandas as pd
             if not exec_result['success']:
                 raise RuntimeError(f"Code execution failed: {exec_result['error']}")
             
-            # Get the executed df
+            # Get the executed df, restore DatetimeIndex for signal alignment
             executed_df = exec_env.get('df', df)
+            if isinstance(df.index, pd.DatetimeIndex) and not isinstance(executed_df.index, pd.DatetimeIndex):
+                if 'time' in executed_df.columns:
+                    executed_df = executed_df.set_index('time')
+                elif len(executed_df) == len(df):
+                    executed_df.index = df.index
 
             # Validation: if chart signals are provided, df['buy']/df['sell'] must exist for backtest normalization.
             # This keeps indicator scripts simple and consistent (chart=buy/sell, execution=normalized in backend).

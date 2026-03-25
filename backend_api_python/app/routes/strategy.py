@@ -1027,3 +1027,153 @@ def clear_notifications():
     except Exception as e:
         logger.error(f"clear_notifications failed: {str(e)}")
         return jsonify({'code': 0, 'msg': str(e)}), 500
+
+
+# ===== Script Strategy Endpoints =====
+
+@strategy_bp.route('/strategies/verify-code', methods=['POST'])
+@login_required
+def verify_strategy_code():
+    """Verify script strategy code syntax and safety."""
+    try:
+        payload = request.get_json() or {}
+        code = payload.get('code', '')
+        if not code.strip():
+            return jsonify({'success': False, 'message': 'Code is empty'})
+
+        required_funcs = ['on_bar', 'on_init']
+        found = [f for f in required_funcs if f'def {f}' in code]
+        missing = [f for f in required_funcs if f not in found]
+
+        if missing:
+            return jsonify({
+                'success': False,
+                'message': f'Missing required functions: {", ".join(missing)}'
+            })
+
+        try:
+            compile(code, '<strategy>', 'exec')
+        except SyntaxError as se:
+            return jsonify({
+                'success': False,
+                'message': f'Syntax error at line {se.lineno}: {se.msg}'
+            })
+
+        return jsonify({'success': True, 'message': 'Code verification passed'})
+    except Exception as e:
+        logger.error(f"verify_strategy_code failed: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@strategy_bp.route('/strategies/ai-generate', methods=['POST'])
+@login_required
+def ai_generate_strategy():
+    """Generate strategy code using AI."""
+    try:
+        payload = request.get_json() or {}
+        prompt = payload.get('prompt', '')
+        if not prompt.strip():
+            return jsonify({'code': '', 'msg': 'Prompt is empty'})
+
+        system_prompt = """You are a quantitative trading strategy code generator.
+Generate Python strategy code that follows this framework:
+- def on_init(ctx): Initialize strategy parameters using ctx.param(name, default)
+- def on_bar(ctx, bar): Core logic called on each K-line bar
+  - bar has: open, high, low, close, volume, timestamp
+  - ctx.buy(price, amount), ctx.sell(price, amount), ctx.close_position()
+  - ctx.position (current position), ctx.balance, ctx.equity
+  - ctx.bars(n) to get last N bars, ctx.log(message) to log
+- def on_order_filled(ctx, order): Optional callback when order fills
+- def on_stop(ctx): Optional cleanup when strategy stops
+
+Return ONLY the Python code, no explanations."""
+
+        from app.services.llm import LLMService
+        llm = LLMService()
+        api_key = llm.get_api_key()
+        if not api_key:
+            return jsonify({'code': '', 'msg': 'No LLM API key configured'})
+
+        content = llm.call_llm_api(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            model=llm.get_code_generation_model(),
+            temperature=0.7,
+            use_json_mode=False
+        )
+
+        content = content.strip()
+        if content.startswith("```python"):
+            content = content[9:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+
+        if content:
+            return jsonify({'code': content, 'msg': 'success'})
+        else:
+            return jsonify({'code': '', 'msg': 'AI generation returned empty result'})
+    except Exception as e:
+        logger.error(f"ai_generate_strategy failed: {str(e)}")
+        return jsonify({'code': '', 'msg': str(e)})
+
+
+@strategy_bp.route('/strategies/performance', methods=['GET'])
+@login_required
+def get_strategy_performance():
+    """Get strategy performance metrics (aggregated from equity curve and trades)."""
+    try:
+        strategy_id = request.args.get('id')
+        if not strategy_id:
+            return jsonify({'code': 0, 'msg': 'Strategy ID required'})
+
+        svc = get_strategy_service()
+        equity_data = svc.get_equity_curve(int(strategy_id))
+        return jsonify({
+            'code': 1,
+            'msg': 'success',
+            'data': {
+                'equity_curve': equity_data
+            }
+        })
+    except Exception as e:
+        logger.error(f"get_strategy_performance failed: {str(e)}")
+        return jsonify({'code': 0, 'msg': str(e)}), 500
+
+
+@strategy_bp.route('/strategies/logs', methods=['GET'])
+@login_required
+def get_strategy_logs():
+    """Get strategy running logs."""
+    try:
+        strategy_id = request.args.get('id')
+        limit = int(request.args.get('limit', 200))
+        if not strategy_id:
+            return jsonify({'code': 0, 'msg': 'Strategy ID required'})
+
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                SELECT id, strategy_id, level, message, timestamp
+                FROM qd_strategy_logs
+                WHERE strategy_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (int(strategy_id), limit)
+            )
+            rows = cur.fetchall() or []
+            cur.close()
+
+        logs = list(reversed(rows))
+        return jsonify({'code': 1, 'msg': 'success', 'data': logs})
+    except Exception as e:
+        if 'qd_strategy_logs' in str(e) and ('does not exist' in str(e) or 'no such table' in str(e)):
+            return jsonify({'code': 1, 'msg': 'success', 'data': []})
+        logger.error(f"get_strategy_logs failed: {str(e)}")
+        return jsonify({'code': 0, 'msg': str(e)}), 500

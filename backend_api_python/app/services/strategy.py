@@ -670,6 +670,9 @@ class StrategyService:
             trading_config['long_ratio'] = long_ratio
             trading_config['rebalance_frequency'] = rebalance_frequency
 
+        strategy_mode = payload.get('strategy_mode') or 'signal'
+        strategy_code = payload.get('strategy_code') or ''
+
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
@@ -678,9 +681,9 @@ class StrategyService:
                 (user_id, strategy_name, strategy_type, market_category, execution_mode, notification_config,
                  status, symbol, timeframe, initial_capital, leverage, market_type,
                  exchange_config, indicator_config, trading_config, ai_model_config, decide_interval,
-                 strategy_group_id, group_base_name,
+                 strategy_group_id, group_base_name, strategy_mode, strategy_code,
                  created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                 """,
                 (
                     user_id,
@@ -701,7 +704,9 @@ class StrategyService:
                     self._dump_json_or_encrypt(payload.get('ai_model_config') or {}, encrypt=False),
                     int(payload.get('decide_interval') or 300),
                     strategy_group_id,
-                    group_base_name
+                    group_base_name,
+                    strategy_mode,
+                    strategy_code
                 )
             )
             new_id = cur.lastrowid
