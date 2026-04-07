@@ -135,14 +135,29 @@ class StrategySnapshotResolver:
         timeframe = str(override.get("timeframe") or trading_config.get("timeframe") or strategy.get("timeframe") or "1D").strip() or "1D"
         initial_capital = self._to_float(override.get("initialCapital", trading_config.get("initial_capital", strategy.get("initial_capital", 10000))), 10000.0)
         leverage = self._to_int(override.get("leverage", trading_config.get("leverage", strategy.get("leverage", 1))), 1)
-        commission = self._percent_to_ratio(override.get("commission", trading_config.get("commission", 0)))
-        slippage = self._percent_to_ratio(override.get("slippage", trading_config.get("slippage", 0)))
+        # Commission/slippage are backtest-only assumptions (not used by live ScriptStrategy execution).
+        # Script strategies created from the UI may omit these; apply sensible backtest defaults.
+        commission_raw = override.get("commission")
+        if commission_raw is None:
+            commission_raw = trading_config.get("commission")
+        slippage_raw = override.get("slippage")
+        if slippage_raw is None:
+            slippage_raw = trading_config.get("slippage")
+        strategy_type_early = str(strategy.get("strategy_type") or "IndicatorStrategy").strip() or "IndicatorStrategy"
+        strategy_mode_early = str(strategy.get("strategy_mode") or "signal").strip() or "signal"
+        is_script_early = strategy_type_early == "ScriptStrategy" or strategy_mode_early == "script"
+        if commission_raw is None or commission_raw == "":
+            commission_raw = 0.05 if is_script_early else 0
+        if slippage_raw is None or slippage_raw == "":
+            slippage_raw = 0.0
+        commission = self._percent_to_ratio(commission_raw)
+        slippage = self._percent_to_ratio(slippage_raw)
         trade_direction = str(trading_config.get("trade_direction") or "long").strip().lower() or "long"
         enable_mtf = self._to_bool(override.get("enableMtf", market.lower() == "crypto"))
 
-        strategy_type = str(strategy.get("strategy_type") or "IndicatorStrategy").strip() or "IndicatorStrategy"
-        strategy_mode = str(strategy.get("strategy_mode") or "signal").strip() or "signal"
-        is_script = strategy_type == "ScriptStrategy" or strategy_mode == "script"
+        strategy_type = strategy_type_early
+        strategy_mode = strategy_mode_early
+        is_script = is_script_early
 
         indicator_id = indicator_config.get("indicator_id") or strategy.get("indicator_id")
         indicator_name = indicator_config.get("indicator_name") or ""

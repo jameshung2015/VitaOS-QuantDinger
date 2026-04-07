@@ -87,26 +87,20 @@ class PolymarketWorker:
             logger.info("Starting Polymarket data update and analysis...")
             start_time = time.time()
             
-            # 1. 更新市场数据（从所有主要分类获取）
-            categories = ["crypto", "politics", "economics", "sports", "tech", "finance", "geopolitics", "culture", "climate", "entertainment"]
-            all_markets = []
+            # Gamma API /events has no category param — fetch ALL once, categorize locally.
+            all_markets = self.polymarket_source.get_trending_markets(category="all", limit=500)
+            logger.info(f"Fetched {len(all_markets)} markets from Gamma API (single request)")
             
-            for category in categories:
-                try:
-                    markets = self.polymarket_source.get_trending_markets(category, limit=50)
-                    all_markets.extend(markets)
-                    logger.info(f"Fetched {len(markets)} markets from category: {category}")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch markets for category {category}: {e}")
-            
-            # 去重（按market_id）
             unique_markets = {}
+            cat_counts: Dict[str, int] = {}
             for market in all_markets:
                 market_id = market.get('market_id')
                 if market_id:
                     unique_markets[market_id] = market
+                    cat = market.get('category', 'other')
+                    cat_counts[cat] = cat_counts.get(cat, 0) + 1
             
-            logger.info(f"Total unique markets: {len(unique_markets)}")
+            logger.info(f"Total unique markets: {len(unique_markets)}, by category: {cat_counts}")
             
             # 2. 批量分析市场（一次性分析所有市场，由AI筛选机会）
             markets_list = list(unique_markets.values())

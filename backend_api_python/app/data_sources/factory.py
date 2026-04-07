@@ -52,6 +52,12 @@ class DataSourceFactory:
         if market == 'Crypto':
             from app.data_sources.crypto import CryptoDataSource
             return CryptoDataSource()
+        elif market == 'CNStock':
+            from app.data_sources.cn_stock import CNStockDataSource
+            return CNStockDataSource()
+        elif market == 'HKStock':
+            from app.data_sources.hk_stock import HKStockDataSource
+            return HKStockDataSource()
         elif market == 'USStock':
             from app.data_sources.us_stock import USStockDataSource
             return USStockDataSource()

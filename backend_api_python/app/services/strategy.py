@@ -977,12 +977,24 @@ class StrategyService:
         leverage = (trading_config or {}).get('leverage') or existing.get('leverage') or 1
         market_type = (trading_config or {}).get('market_type') or existing.get('market_type') or 'swap'
 
+        strategy_type = (payload.get('strategy_type') if payload.get('strategy_type') is not None
+                         else existing.get('strategy_type')) or 'IndicatorStrategy'
+        strategy_mode = (payload.get('strategy_mode') if payload.get('strategy_mode') is not None
+                         else existing.get('strategy_mode')) or 'signal'
+        if 'strategy_code' in payload:
+            strategy_code = payload.get('strategy_code') or ''
+        else:
+            strategy_code = existing.get('strategy_code') or ''
+
         with get_db_connection() as db:
             cur = db.cursor()
             cur.execute(
                 """
                 UPDATE qd_strategies_trading
                 SET strategy_name = ?,
+                    strategy_type = ?,
+                    strategy_mode = ?,
+                    strategy_code = ?,
                     market_category = ?,
                     execution_mode = ?,
                     notification_config = ?,
@@ -1000,6 +1012,9 @@ class StrategyService:
                 """,
                 (
                     name,
+                    strategy_type,
+                    strategy_mode,
+                    strategy_code,
                     market_category,
                     execution_mode,
                     self._dump_json_or_encrypt(notification_config, encrypt=False),

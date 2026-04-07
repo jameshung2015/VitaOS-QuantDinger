@@ -399,6 +399,15 @@ CONFIG_SCHEMA = {
                 'link_text': 'settings.link.getToken',
                 'description': 'Tiingo API key for Forex/Metals data'
             },
+            {
+                'key': 'TWELVE_DATA_API_KEY',
+                'label': 'Twelve Data API Key',
+                'type': 'password',
+                'required': False,
+                'link': 'https://twelvedata.com/apikey',
+                'link_text': 'settings.link.getApiKey',
+                'description': 'Twelve Data API key for CN/HK stock K-lines (free 800 credits/day)'
+            },
         ]
     },
 

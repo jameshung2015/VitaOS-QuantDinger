@@ -21,6 +21,7 @@ import requests
 
 from app.utils.logger import get_logger
 from app.data.market_symbols_seed import get_symbol_name as seed_get_symbol_name
+from app.data_sources.tencent import normalize_cn_code, normalize_hk_code
 
 logger = get_logger(__name__)
 
@@ -28,6 +29,10 @@ logger = get_logger(__name__)
 def _normalize_symbol_for_market(market: str, symbol: str) -> str:
     m = (market or '').strip()
     s = (symbol or '').strip().upper()
+    if m == 'CNStock':
+        return normalize_cn_code(s)
+    if m == 'HKStock':
+        return normalize_hk_code(s)
     return s
 
 
@@ -104,6 +109,17 @@ def resolve_symbol_name(market: str, symbol: str) -> Optional[str]:
         # Prefer Finnhub if configured (more stable for company name),
         # otherwise fall back to yfinance.
         return _resolve_name_from_finnhub(s) or _resolve_name_from_yfinance(s)
+
+    # CN/HK stocks: try Tencent quote name first (no key), then yfinance best-effort.
+    if m in ('CNStock', 'HKStock'):
+        try:
+            from app.data_sources.tencent import fetch_quote
+            parts = fetch_quote(s)
+            if parts and len(parts) > 1 and parts[1]:
+                return str(parts[1]).strip()
+        except Exception:
+            pass
+        return _resolve_name_from_yfinance(s)
 
     # Crypto: at least return base ticker-like display (not a "company", but better than empty)
     if m == 'Crypto':

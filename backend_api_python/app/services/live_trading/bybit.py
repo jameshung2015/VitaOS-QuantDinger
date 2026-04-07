@@ -32,7 +32,7 @@ class BybitClient(BaseRestClient):
         base_url: str = "https://api.bybit.com",
         timeout_sec: float = 15.0,
         category: str = "linear",  # "linear" (USDT perpetual) or "spot"
-        recv_window_ms: int = 5000,
+        recv_window_ms: int = 12000,
         broker_referer: str = "",
         hedge_mode: bool = False,
     ):
@@ -45,11 +45,13 @@ class BybitClient(BaseRestClient):
         if self.category not in ("linear", "spot"):
             self.category = "linear"
         try:
-            self.recv_window_ms = int(recv_window_ms or 5000)
+            self.recv_window_ms = int(recv_window_ms or 12000)
         except Exception:
+            self.recv_window_ms = 12000
+        if self.recv_window_ms < 5000:
             self.recv_window_ms = 5000
-        if self.recv_window_ms <= 0:
-            self.recv_window_ms = 5000
+        if self.recv_window_ms > 60000:
+            self.recv_window_ms = 60000
 
         if not self.api_key or not self.secret_key:
             raise LiveTradingError("Missing Bybit api_key/secret_key")
@@ -58,6 +60,12 @@ class BybitClient(BaseRestClient):
         # Key: f"{category}:{symbol}" -> (fetched_at_ts, info_dict)
         self._inst_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         self._inst_cache_ttl_sec = 300.0
+
+        # Bybit v5 rejects requests if local clock diverges from server (retCode 10002).
+        # Offset = server_ms - local_ms; signed timestamp uses local_ms + offset.
+        self._time_offset_ms: int = 0
+        self._time_offset_at: float = 0.0
+        self._time_sync_ttl_sec: float = 55.0
 
     @staticmethod
     def _to_dec(x: Any) -> Decimal:
@@ -161,6 +169,48 @@ class BybitClient(BaseRestClient):
     def _sign(self, prehash: str) -> str:
         return hmac.new(self.secret_key.encode("utf-8"), prehash.encode("utf-8"), hashlib.sha256).hexdigest()
 
+    @staticmethod
+    def _parse_server_time_ms_from_market_time(raw: Dict[str, Any]) -> int:
+        """Parse milliseconds from GET /v5/market/time (or similar) JSON."""
+        if not isinstance(raw, dict):
+            raise LiveTradingError("Bybit market/time: invalid response")
+        res = raw.get("result")
+        if isinstance(res, dict):
+            nano = res.get("timeNano")
+            if nano is not None and str(nano).strip() != "":
+                try:
+                    return int(int(str(nano)) // 1_000_000)
+                except Exception:
+                    pass
+            sec = res.get("timeSecond")
+            if sec is not None and str(sec).strip() != "":
+                try:
+                    return int(float(sec) * 1000)
+                except Exception:
+                    pass
+        t = raw.get("time")
+        if t is not None:
+            try:
+                return int(t)
+            except Exception:
+                pass
+        raise LiveTradingError("Bybit market/time: missing time fields")
+
+    def sync_server_time_offset(self, *, force: bool = False) -> None:
+        """Align signing timestamp with Bybit server (public /v5/market/time)."""
+        now = time.time()
+        if (
+            not force
+            and self._time_offset_at > 0
+            and (now - self._time_offset_at) < float(self._time_sync_ttl_sec or 55.0)
+        ):
+            return
+        raw = self._public_request("GET", "/v5/market/time")
+        srv_ms = self._parse_server_time_ms_from_market_time(raw)
+        local_ms = int(time.time() * 1000)
+        self._time_offset_ms = int(srv_ms - local_ms)
+        self._time_offset_at = now
+
     def _resolve_position_idx(self, pos_side: str) -> Optional[int]:
         if not self.hedge_mode:
             return None
@@ -193,32 +243,55 @@ class BybitClient(BaseRestClient):
         json_body: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         m = str(method or "GET").upper()
-        ts_ms = str(int(time.time() * 1000))
-
         body_str = self._json_dumps(json_body) if json_body is not None else ""
-        qs = ""
+        qs_base = ""
         if params:
             norm = {str(k): "" if v is None else str(v) for k, v in dict(params).items()}
-            qs = urlencode(sorted(norm.items()), doseq=True)
+            qs_base = urlencode(sorted(norm.items()), doseq=True)
+        payload_get = qs_base
+        payload_post = body_str
 
-        payload = qs if m == "GET" else body_str
-        prehash = f"{ts_ms}{self.api_key}{self.recv_window_ms}{payload}"
-        sign = self._sign(prehash)
+        last_err: Optional[LiveTradingError] = None
+        for attempt in range(2):
+            try:
+                self.sync_server_time_offset(force=(attempt > 0))
+            except Exception as e:
+                if attempt == 0:
+                    # First attempt: still try with raw local time; second pass may recover.
+                    pass
+                else:
+                    raise LiveTradingError(f"Bybit time sync failed: {e}") from e
 
-        code, data, text = self._request(
-            m,
-            path,
-            params=params if (m == "GET" and params) else (params or None),
-            data=body_str if body_str else None,
-            headers=self._headers(ts_ms, sign),
-        )
-        if code >= 400:
-            raise LiveTradingError(f"Bybit HTTP {code}: {text[:500]}")
-        if isinstance(data, dict):
-            rc = data.get("retCode")
-            if rc not in (0, "0", None, ""):
-                raise LiveTradingError(f"Bybit error: {data}")
-        return data if isinstance(data, dict) else {"raw": data}
+            ts_ms = str(int(time.time() * 1000) + int(self._time_offset_ms or 0))
+            payload = payload_get if m == "GET" else payload_post
+            prehash = f"{ts_ms}{self.api_key}{self.recv_window_ms}{payload}"
+            sign = self._sign(prehash)
+
+            code, data, text = self._request(
+                m,
+                path,
+                params=params if (m == "GET" and params) else (params or None),
+                data=body_str if body_str else None,
+                headers=self._headers(ts_ms, sign),
+            )
+            if code >= 400:
+                raise LiveTradingError(f"Bybit HTTP {code}: {text[:500]}")
+            if isinstance(data, dict):
+                rc = data.get("retCode")
+                try:
+                    rc_int = int(rc) if rc is not None and str(rc).strip() != "" else 0
+                except Exception:
+                    rc_int = -1
+                if rc_int == 10002 and attempt == 0:
+                    last_err = LiveTradingError(f"Bybit error: {data}")
+                    continue
+                if rc not in (0, "0", None, ""):
+                    raise LiveTradingError(f"Bybit error: {data}")
+            return data if isinstance(data, dict) else {"raw": data}
+
+        if last_err:
+            raise last_err
+        raise LiveTradingError("Bybit signed request failed after time resync")
 
     def _public_request(self, method: str, path: str, *, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         code, data, text = self._request(method, path, params=params, headers=None, json_body=None, data=None)
@@ -236,6 +309,109 @@ class BybitClient(BaseRestClient):
             return isinstance(data, dict) and (data.get("retCode") in (0, "0", None, ""))
         except Exception:
             return False
+
+    @staticmethod
+    def _row_to_ticker_out(row: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(row, dict):
+            return {}
+        last_raw = row.get("lastPrice") or row.get("last") or row.get("markPrice") or row.get("indexPrice") or 0
+        try:
+            px = float(str(last_raw).replace(",", "").strip() or 0)
+        except Exception:
+            px = 0.0
+        if px <= 0:
+            return {}
+        out: Dict[str, Any] = dict(row)
+        out["last"] = px
+        out["price"] = px
+        return out
+
+    def get_ticker(self, *, symbol: str) -> Dict[str, Any]:
+        """
+        Public market price for USDT notional -> base qty (quick_trade / execution).
+
+        Tries: ``/v5/market/tickers`` (by symbol) → ``/v5/market/orderbook`` (mid) →
+        ``/v5/market/tickers`` (category-only, scan list). Some environments return an empty
+        ticker list for filtered queries; fallbacks avoid silent failure.
+        """
+        sym = to_bybit_symbol(symbol)
+        if not sym:
+            return {}
+        cat = "spot" if (self.category or "").strip().lower() == "spot" else "linear"
+        sym_u = sym.upper()
+
+        # 1) Filtered tickers (preferred)
+        try:
+            raw = self._public_request("GET", "/v5/market/tickers", params={"category": cat, "symbol": sym_u})
+            lst = (((raw or {}).get("result") or {}).get("list")) if isinstance(raw, dict) else None
+            if isinstance(lst, list) and lst:
+                out = self._row_to_ticker_out(lst[0] if isinstance(lst[0], dict) else {})
+                if out:
+                    return out
+        except LiveTradingError:
+            pass
+        except Exception:
+            pass
+
+        # 2) Order book mid (bid/ask)
+        try:
+            ob = self._public_request(
+                "GET",
+                "/v5/market/orderbook",
+                params={"category": cat, "symbol": sym_u, "limit": 25},
+            )
+            res = (ob.get("result") or {}) if isinstance(ob, dict) else {}
+            bids = res.get("b") or []
+            asks = res.get("a") or []
+            bid_p = 0.0
+            ask_p = 0.0
+            if isinstance(bids, list) and bids and isinstance(bids[0], (list, tuple)) and len(bids[0]) > 0:
+                try:
+                    bid_p = float(str(bids[0][0]).replace(",", ""))
+                except Exception:
+                    bid_p = 0.0
+            if isinstance(asks, list) and asks and isinstance(asks[0], (list, tuple)) and len(asks[0]) > 0:
+                try:
+                    ask_p = float(str(asks[0][0]).replace(",", ""))
+                except Exception:
+                    ask_p = 0.0
+            mid = 0.0
+            if bid_p > 0 and ask_p > 0:
+                mid = (bid_p + ask_p) / 2.0
+            else:
+                mid = bid_p or ask_p
+            if mid > 0:
+                return {
+                    "symbol": sym_u,
+                    "last": mid,
+                    "price": mid,
+                    "bid1Price": bid_p,
+                    "ask1Price": ask_p,
+                }
+        except LiveTradingError:
+            pass
+        except Exception:
+            pass
+
+        # 3) Full category ticker list, match symbol (larger payload; last resort)
+        try:
+            raw = self._public_request("GET", "/v5/market/tickers", params={"category": cat})
+            lst = (((raw or {}).get("result") or {}).get("list")) if isinstance(raw, dict) else None
+            if isinstance(lst, list):
+                for row in lst:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("symbol") or "").strip().upper() != sym_u:
+                        continue
+                    out = self._row_to_ticker_out(row)
+                    if out:
+                        return out
+        except LiveTradingError:
+            pass
+        except Exception:
+            pass
+
+        return {}
 
     def get_wallet_balance(self, *, account_type: str = "UNIFIED") -> Dict[str, Any]:
         return self._signed_request("GET", "/v5/account/wallet-balance", params={"accountType": str(account_type or "UNIFIED")})
@@ -497,10 +673,28 @@ class BybitClient(BaseRestClient):
                 return {"filled": filled, "avg_price": avg_price, "fee": fee, "fee_ccy": fee_ccy, "status": status, "order": last}
             time.sleep(float(poll_interval_sec or 0.5))
 
-    def get_positions(self) -> Dict[str, Any]:
+    def get_positions(
+        self,
+        *,
+        symbol: str = "",
+        settle_coin: str = "",
+    ) -> Dict[str, Any]:
+        """
+        GET /v5/position/list — Bybit v5 requires ``symbol`` OR ``settleCoin`` with ``category``.
+
+        - Pass ``symbol`` (e.g. ETH/USDT) to query one contract.
+        - Omit ``symbol`` and pass ``settle_coin`` (default USDT) to list all USDT-linear positions.
+        """
         if self.category != "linear":
             raise LiveTradingError("Bybit positions are only supported for linear category in this client")
-        return self._signed_request("GET", "/v5/position/list", params={"category": "linear"})
+        params: Dict[str, Any] = {"category": "linear"}
+        sym = to_bybit_symbol(symbol) if (symbol or "").strip() else ""
+        if sym:
+            params["symbol"] = sym
+        else:
+            sc = (settle_coin or "USDT").strip().upper() or "USDT"
+            params["settleCoin"] = sc
+        return self._signed_request("GET", "/v5/position/list", params=params)
 
     def set_leverage(self, *, symbol: str, leverage: float) -> bool:
         if self.category != "linear":

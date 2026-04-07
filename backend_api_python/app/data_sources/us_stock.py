@@ -88,7 +88,11 @@ class USStockDataSource(BaseDataSource):
                         'previousClose': quote.get('pc', 0)  # 昨收价
                     }
             except Exception as e:
-                logger.warning(f"Finnhub quote failed for {symbol}: {e}")
+                msg = str(e).lower()
+                if "403" in str(e) or "don't have access" in msg or "no access" in msg:
+                    logger.debug(f"Finnhub quote skipped (no access): {symbol}: {e}")
+                else:
+                    logger.warning(f"Finnhub quote failed for {symbol}: {e}")
         
         # 降级使用 yfinance
         try:
@@ -260,7 +264,12 @@ class USStockDataSource(BaseDataSource):
                     ))
                 # logger.info(f"Finnhub 返回 {len(klines)} 条数据")
         except Exception as e:
-            logger.error(f"Finnhub fetch failed: {e}")
+            msg = str(e).lower()
+            # Free tier / plan: 403 "You don't have access to this resource" is common; avoid ERROR spam.
+            if "403" in str(e) or "don't have access" in msg or "no access" in msg:
+                logger.debug(f"Finnhub candles skipped (no access): {symbol}: {e}")
+            else:
+                logger.warning(f"Finnhub fetch failed: {e}")
         
         return klines
     

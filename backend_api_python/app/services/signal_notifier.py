@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from typing import Any, Dict, List, Optional, Tuple
 
+from zoneinfo import ZoneInfo
+
 import requests
 
 from app.utils.db import get_db_connection
@@ -76,6 +78,43 @@ def _signal_meta(signal_type: str) -> Dict[str, str]:
 
     side = "long" if "long" in st else ("short" if "short" in st else "")
     return {"action": action, "side": side, "type": st}
+
+
+def _load_user_timezone_for_strategy(strategy_id: int) -> str:
+    try:
+        sid = int(strategy_id)
+    except Exception:
+        return ""
+    try:
+        with get_db_connection() as db:
+            cur = db.cursor()
+            cur.execute(
+                """
+                SELECT COALESCE(u.timezone, '') AS tz
+                FROM qd_strategies_trading s
+                JOIN qd_users u ON u.id = s.user_id
+                WHERE s.id = ?
+                """,
+                (sid,),
+            )
+            row = cur.fetchone() or {}
+            cur.close()
+        return str(row.get("tz") or "").strip()
+    except Exception:
+        return ""
+
+
+def _utc_ts_to_user_display(now: int, user_timezone: str) -> Tuple[str, str, str]:
+    """Return (utc_iso, display_local_str, label_for_plaintext)."""
+    iso = datetime.fromtimestamp(int(now), tz=timezone.utc).isoformat()
+    utz = (user_timezone or "").strip()
+    if not utz:
+        return iso, iso, "Time (UTC)"
+    try:
+        dt = datetime.fromtimestamp(int(now), tz=timezone.utc).astimezone(ZoneInfo(utz))
+        return iso, dt.strftime("%Y-%m-%d %H:%M:%S"), f"Time ({utz})"
+    except Exception:
+        return iso, iso, "Time (UTC)"
 
 
 def _fmt_float(value: Any, *, max_decimals: int = 10) -> str:
@@ -150,6 +189,7 @@ class SignalNotifier:
         targets = _safe_json(cfg.get("targets") or {})
         extra = extra if isinstance(extra, dict) else {}
 
+        user_tz = _load_user_timezone_for_strategy(int(strategy_id))
         payload = self._build_payload(
             strategy_id=strategy_id,
             strategy_name=strategy_name,
@@ -159,6 +199,7 @@ class SignalNotifier:
             stake_amount=stake_amount,
             direction=direction,
             extra=extra,
+            user_timezone=user_tz,
         )
         rendered = self._render_messages(payload)
         title = rendered.get("title") or ""
@@ -252,9 +293,10 @@ class SignalNotifier:
         stake_amount: float,
         direction: str,
         extra: Dict[str, Any],
+        user_timezone: str = "",
     ) -> Dict[str, Any]:
         now = int(time.time())
-        iso = datetime.fromtimestamp(now, tz=timezone.utc).isoformat()
+        iso, disp, tlab = _utc_ts_to_user_display(now, user_timezone)
         meta = _signal_meta(signal_type)
 
         pending_id = None
@@ -268,6 +310,8 @@ class SignalNotifier:
             "version": 1,
             "timestamp": now,
             "timestamp_iso": iso,
+            "timestamp_display": disp,
+            "time_label": tlab,
             "strategy": {
                 "id": int(strategy_id),
                 "name": str(strategy_name or ""),
@@ -310,6 +354,8 @@ class SignalNotifier:
         pending_id = int(trace.get("pending_order_id") or 0) if trace.get("pending_order_id") else 0
         mode = str(trace.get("mode") or "")
         ts_iso = str(payload.get("timestamp_iso") or "")
+        ts_disp = str(payload.get("timestamp_display") or "") or ts_iso
+        ts_lbl = str(payload.get("time_label") or "Time")
 
         plain_lines = [
             "QuantDinger Signal",
@@ -323,8 +369,8 @@ class SignalNotifier:
             plain_lines.append(f"PendingOrder: {pending_id}")
         if mode:
             plain_lines.append(f"Mode: {mode}")
-        if ts_iso:
-            plain_lines.append(f"Time(UTC): {ts_iso}")
+        if ts_disp:
+            plain_lines.append(f"{ts_lbl}: {ts_disp}")
 
         # Telegram (HTML) message. Escape all dynamic values.
         t_strategy = f"{strategy.get('name') or ''} (#{int(strategy.get('id') or 0)})"
@@ -341,8 +387,8 @@ class SignalNotifier:
             telegram_lines.append(f"<b>PendingOrder</b>: <code>{pending_id}</code>")
         if mode:
             telegram_lines.append(f"<b>Mode</b>: <code>{html.escape(mode)}</code>")
-        if ts_iso:
-            telegram_lines.append(f"<b>Time (UTC)</b>: <code>{html.escape(ts_iso)}</code>")
+        if ts_disp:
+            telegram_lines.append(f"<b>{html.escape(ts_lbl)}</b>: <code>{html.escape(ts_disp)}</code>")
         telegram_html = "\n".join([x for x in telegram_lines if x is not None])
 
         # Email (HTML) message. Keep inline CSS for maximum compatibility.
@@ -355,7 +401,8 @@ class SignalNotifier:
             stake_text=stake_s,
             pending_id=pending_id or None,
             mode_text=mode or "",
-            timestamp_iso=ts_iso or "",
+            timestamp_display=ts_disp or "",
+            time_row_label=ts_lbl or "Time",
         )
 
         return {
@@ -376,7 +423,8 @@ class SignalNotifier:
         stake_text: str,
         pending_id: Optional[int],
         mode_text: str,
-        timestamp_iso: str,
+        timestamp_display: str,
+        time_row_label: str,
     ) -> str:
         def esc(s: Any) -> str:
             return html.escape(str(s or ""))
@@ -392,8 +440,8 @@ class SignalNotifier:
             rows.append(("PendingOrder", str(int(pending_id))))
         if mode_text:
             rows.append(("Mode", mode_text))
-        if timestamp_iso:
-            rows.append(("Time (UTC)", timestamp_iso))
+        if timestamp_display:
+            rows.append((time_row_label or "Time", timestamp_display))
 
         tr_html = "\n".join(
             [
@@ -418,7 +466,7 @@ class SignalNotifier:
     <div style="max-width:640px;margin:0 auto;padding:24px;">
       <div style="background:#111827;color:#ffffff;padding:16px 18px;border-radius:12px 12px 0 0;">
         <div style="font-size:16px;letter-spacing:0.2px;font-weight:600;">{esc(title_text)}</div>
-        <div style="margin-top:6px;font-size:12px;color:#d1d5db;">{esc(timestamp_iso) if timestamp_iso else ""}</div>
+        <div style="margin-top:6px;font-size:12px;color:#d1d5db;">{esc(timestamp_display) if timestamp_display else ""}</div>
       </div>
       <div style="background:#ffffff;border:1px solid #eaecef;border-top:0;border-radius:0 0 12px 12px;overflow:hidden;">
         <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">

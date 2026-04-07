@@ -1674,6 +1674,77 @@ def _fetch_stock_opportunity_prices() -> List[Dict[str, Any]]:
         return []
 
 
+def _fetch_local_stock_opportunity_prices(market: str, limit: int = 15) -> List[Dict[str, Any]]:
+    """
+    Fetch CN/HK stock prices for opportunity scanning.
+
+    For overseas servers we prefer the project's Tencent-based ticker path, which is
+    typically more reachable/stable than some Eastmoney/AkShare endpoints.
+    """
+    m = str(market or "").strip()
+    if m not in ("CNStock", "HKStock"):
+        return []
+
+    fallback_symbols = {
+        "CNStock": [
+            {"symbol": "600519", "name": "贵州茅台"},
+            {"symbol": "000001", "name": "平安银行"},
+            {"symbol": "300750", "name": "宁德时代"},
+            {"symbol": "601318", "name": "中国平安"},
+            {"symbol": "600036", "name": "招商银行"},
+            {"symbol": "002594", "name": "比亚迪"},
+            {"symbol": "600276", "name": "恒瑞医药"},
+            {"symbol": "601899", "name": "紫金矿业"},
+        ],
+        "HKStock": [
+            {"symbol": "00700", "name": "腾讯控股"},
+            {"symbol": "09988", "name": "阿里巴巴-W"},
+            {"symbol": "03690", "name": "美团-W"},
+            {"symbol": "01810", "name": "小米集团-W"},
+            {"symbol": "01299", "name": "友邦保险"},
+            {"symbol": "00939", "name": "建设银行"},
+            {"symbol": "02318", "name": "中国平安"},
+            {"symbol": "09618", "name": "京东集团-SW"},
+        ],
+    }
+
+    try:
+        from app.data.market_symbols_seed import get_hot_symbols
+        from app.data_sources import DataSourceFactory
+        from app.services.symbol_name import resolve_symbol_name
+
+        symbols = get_hot_symbols(m, limit=max(int(limit or 15), 1)) or fallback_symbols.get(m, [])
+        source = DataSourceFactory.get_source(m)
+
+        result = []
+        for item in symbols[: max(int(limit or 15), 1)]:
+            try:
+                symbol = str(item.get("symbol") or "").strip()
+                if not symbol:
+                    continue
+                ticker = source.get_ticker(symbol) or {}
+                last = _safe_float(ticker.get("last") or ticker.get("close") or ticker.get("price"))
+                if last <= 0:
+                    continue
+                change_pct = ticker.get("changePercent")
+                if change_pct is None:
+                    prev_close = _safe_float(ticker.get("previousClose"))
+                    change_pct = ((last - prev_close) / prev_close * 100.0) if prev_close > 0 else 0.0
+                result.append({
+                    "symbol": symbol,
+                    "name": (item.get("name") or resolve_symbol_name(m, symbol) or symbol).strip(),
+                    "price": round(last, 4),
+                    "change": round(_safe_float(change_pct), 2),
+                    "market": m,
+                })
+            except Exception as e:
+                logger.debug(f"Failed to fetch {m} opportunity price {item.get('symbol')}: {e}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed to fetch {m} opportunity prices: {e}")
+        return []
+
+
 def _analyze_opportunities_crypto(opportunities: list):
     """Scan crypto market for trading opportunities."""
     crypto_data = _get_cached("crypto_prices")
@@ -1800,6 +1871,75 @@ def _analyze_opportunities_stocks(opportunities: list):
             })
 
 
+def _analyze_opportunities_local_stocks(opportunities: list, market: str):
+    """Scan CN/HK stocks for trading opportunities."""
+    m = str(market or "").strip()
+    if m not in ("CNStock", "HKStock"):
+        return
+
+    cache_key = "cn_stock_opportunity_prices" if m == "CNStock" else "hk_stock_opportunity_prices"
+    stock_data = _get_cached(cache_key)
+    if not stock_data:
+        stock_data = _fetch_local_stock_opportunity_prices(m)
+        if stock_data:
+            _set_cached(cache_key, stock_data, 3600)
+
+    if not stock_data:
+        logger.warning(f"_analyze_opportunities_local_stocks: No {m} data available")
+        return
+
+    logger.debug(f"_analyze_opportunities_local_stocks: Analyzing {len(stock_data)} {m} stocks")
+    strong_th = 7.0 if m == "CNStock" else 6.0
+    medium_th = 3.0 if m == "CNStock" else 2.5
+    market_cn = "A股" if m == "CNStock" else "港股"
+
+    for stock in stock_data:
+        change = _safe_float(stock.get("change", 0))
+        symbol = stock.get("symbol", "")
+        name = stock.get("name", "")
+        price = _safe_float(stock.get("price", 0))
+
+        signal = None
+        strength = "medium"
+        reason = ""
+        impact = "neutral"
+
+        if change > strong_th:
+            signal = "overbought"
+            strength = "strong"
+            reason = f"{market_cn}日涨幅{change:.1f}%，短期涨幅较大，注意回调风险"
+            impact = "bearish"
+        elif change > medium_th:
+            signal = "bullish_momentum"
+            strength = "medium"
+            reason = f"{market_cn}日涨幅{change:.1f}%，上涨动能较强"
+            impact = "bullish"
+        elif change < -strong_th:
+            signal = "oversold"
+            strength = "strong"
+            reason = f"{market_cn}日跌幅{abs(change):.1f}%，可能超卖反弹"
+            impact = "bullish"
+        elif change < -medium_th:
+            signal = "bearish_momentum"
+            strength = "medium"
+            reason = f"{market_cn}日跌幅{abs(change):.1f}%，下跌趋势明显"
+            impact = "bearish"
+
+        if signal:
+            opportunities.append({
+                "symbol": symbol,
+                "name": name,
+                "price": price,
+                "change_24h": change,
+                "signal": signal,
+                "strength": strength,
+                "reason": reason,
+                "impact": impact,
+                "market": m,
+                "timestamp": int(time.time())
+            })
+
+
 def _analyze_opportunities_forex(opportunities: list):
     """Scan forex pairs for trading opportunities."""
     forex_data = _get_cached("forex_pairs")
@@ -1915,7 +2055,7 @@ def _analyze_opportunities_polymarket(opportunities: list):
 @login_required
 def trading_opportunities():
     """
-    Scan for trading opportunities across Crypto, US Stocks, and Forex.
+    Scan for trading opportunities across Crypto, US Stocks, CN/HK Stocks, and Forex.
     Note: Prediction Markets are excluded as they have their own dedicated page.
     Cached for 1 hour. Pass ?force=true to skip cache.
     """
@@ -1945,7 +2085,23 @@ def trading_opportunities():
         except Exception as e:
             logger.error(f"Failed to analyze stock opportunities: {e}", exc_info=True)
 
-        # 3) Forex
+        # 3) CN Stocks
+        try:
+            _analyze_opportunities_local_stocks(opportunities, "CNStock")
+            cn_count = len([o for o in opportunities if o.get("market") == "CNStock"])
+            logger.info(f"Trading opportunities: found {cn_count} CN stock opportunities")
+        except Exception as e:
+            logger.error(f"Failed to analyze CN stock opportunities: {e}", exc_info=True)
+
+        # 4) HK Stocks
+        try:
+            _analyze_opportunities_local_stocks(opportunities, "HKStock")
+            hk_count = len([o for o in opportunities if o.get("market") == "HKStock"])
+            logger.info(f"Trading opportunities: found {hk_count} HK stock opportunities")
+        except Exception as e:
+            logger.error(f"Failed to analyze HK stock opportunities: {e}", exc_info=True)
+
+        # 5) Forex
         try:
             _analyze_opportunities_forex(opportunities)
             forex_count = len([o for o in opportunities if o.get("market") == "Forex"])
@@ -1959,7 +2115,14 @@ def trading_opportunities():
         # Sort by absolute change descending
         opportunities.sort(key=lambda x: abs(x.get("change_24h", 0)), reverse=True)
 
-        logger.info(f"Trading opportunities: total {len(opportunities)} opportunities found (Crypto: {len([o for o in opportunities if o.get('market') == 'Crypto'])}, USStock: {len([o for o in opportunities if o.get('market') == 'USStock'])}, Forex: {len([o for o in opportunities if o.get('market') == 'Forex'])})")
+        logger.info(
+            f"Trading opportunities: total {len(opportunities)} opportunities found "
+            f"(Crypto: {len([o for o in opportunities if o.get('market') == 'Crypto'])}, "
+            f"USStock: {len([o for o in opportunities if o.get('market') == 'USStock'])}, "
+            f"CNStock: {len([o for o in opportunities if o.get('market') == 'CNStock'])}, "
+            f"HKStock: {len([o for o in opportunities if o.get('market') == 'HKStock'])}, "
+            f"Forex: {len([o for o in opportunities if o.get('market') == 'Forex'])})"
+        )
 
         _set_cached("trading_opportunities", opportunities, 3600)
 

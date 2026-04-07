@@ -129,7 +129,7 @@ class MarketDataCollector:
             }
             
             # 如果需要基本面，也并行获取
-            if market == 'USStock':
+            if market in ('USStock', 'CNStock', 'HKStock'):
                 core_futures[executor.submit(self._get_fundamental, market, symbol)] = "fundamental"
                 core_futures[executor.submit(self._get_company, market, symbol)] = "company"
             elif market == 'Crypto':
@@ -616,9 +616,94 @@ class MarketDataCollector:
         try:
             if market == 'USStock':
                 return self._get_us_fundamental(symbol)
+            if market in ('CNStock', 'HKStock'):
+                return self._get_cn_hk_fundamental(market, symbol)
         except Exception as e:
             logger.warning(f"Fundamental data fetch failed for {market}:{symbol}: {e}")
         return None
+
+    def _get_cn_hk_fundamental(self, market: str, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        CN/HK fundamentals — multi-tier:
+          Tier 1: Twelve Data /statistics (globally stable, paid)
+          Tier 2: AkShare / Eastmoney (fragile overseas)
+          + Tencent quote for live price fields
+        """
+        try:
+            from app.data_sources.tencent import (
+                normalize_cn_code,
+                normalize_hk_code,
+                fetch_quote,
+                parse_quote_to_ticker,
+            )
+            from app.data_sources.cn_hk_fundamentals import (
+                fetch_twelvedata_fundamental,
+                fetch_cn_fundamental_akshare,
+                fetch_hk_fundamental_akshare,
+            )
+
+            code = normalize_cn_code(symbol) if market == 'CNStock' else normalize_hk_code(symbol)
+            is_hk = market == 'HKStock'
+
+            parts = fetch_quote(code)
+            t = parse_quote_to_ticker(parts) if parts else {}
+            result: Dict[str, Any] = {
+                "pe_ratio": None,
+                "pb_ratio": None,
+                "ps_ratio": None,
+                "market_cap": None,
+                "dividend_yield": None,
+                "beta": None,
+                "52w_high": None,
+                "52w_low": None,
+                "roe": None,
+                "eps": None,
+                "last": t.get("last"),
+                "previous_close": t.get("previousClose"),
+                "change_percent": t.get("changePercent"),
+                "source": "tencent_quote",
+            }
+
+            # Tier 1: Twelve Data
+            td = {}
+            try:
+                td = fetch_twelvedata_fundamental(code, is_hk)
+            except Exception as e:
+                logger.debug("TwelveData fundamental failed %s:%s: %s", market, symbol, e)
+
+            if td:
+                result["source"] = "tencent_quote+twelvedata"
+                for k, v in td.items():
+                    if k == "source":
+                        continue
+                    if v is not None:
+                        result[k] = v
+
+            # Tier 2: AkShare (fill any remaining None fields)
+            has_valuation = result.get("pe_ratio") is not None or result.get("pb_ratio") is not None
+            if not has_valuation:
+                try:
+                    ak_data = fetch_cn_fundamental_akshare(code) if not is_hk else fetch_hk_fundamental_akshare(code)
+                except Exception as e:
+                    logger.debug("AkShare CN/HK fundamental failed %s:%s: %s", market, symbol, e)
+                    ak_data = {}
+                if ak_data:
+                    if "twelvedata" not in result.get("source", ""):
+                        result["source"] = "tencent_quote+akshare_em"
+                    else:
+                        result["source"] += "+akshare_em"
+                    for k, v in ak_data.items():
+                        if k == "source":
+                            continue
+                        if v is not None and result.get(k) is None:
+                            result[k] = v
+
+            if not parts and not td and not has_valuation:
+                return None
+            return result
+        except Exception as e:
+            logger.debug(f"CN/HK fundamental failed: {market}:{symbol}: {e}")
+            return None
     
     def _get_us_fundamental(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
@@ -924,11 +1009,85 @@ class MarketDataCollector:
                         'market_cap': profile.get('marketCapitalization'),
                         'website': profile.get('weburl'),
                     }
+            if market in ('CNStock', 'HKStock'):
+                return self._get_cn_hk_company(market, symbol)
             
         except Exception as e:
             logger.debug(f"Company info fetch failed for {market}:{symbol}: {e}")
         
         return None
+
+    def _get_cn_hk_company(self, market: str, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        CN/HK company info — multi-tier:
+          Tier 1: Twelve Data /profile (globally stable)
+          Tier 2: AkShare / Eastmoney (fragile overseas)
+          + Tencent quote for Chinese name
+        """
+        try:
+            from app.data_sources.tencent import (
+                normalize_cn_code,
+                normalize_hk_code,
+                fetch_quote,
+            )
+            from app.data_sources.cn_hk_fundamentals import (
+                fetch_twelvedata_profile,
+                fetch_cn_company_extras,
+                fetch_hk_company_extras,
+            )
+
+            code = normalize_cn_code(symbol) if market == 'CNStock' else normalize_hk_code(symbol)
+            is_hk = market == 'HKStock'
+
+            parts = fetch_quote(code)
+            cn_name = ""
+            if parts:
+                cn_name = (parts[1] or "").strip() if len(parts) > 1 else ""
+
+            row: Dict[str, Any] = {
+                "name": cn_name or code,
+                "country": "CN" if market == "CNStock" else "HK",
+                "exchange": "SSE/SZSE" if market == "CNStock" else "HKEX",
+                "symbol": code,
+                "source": "tencent_quote",
+            }
+
+            # Tier 1: Twelve Data /profile
+            td_profile = {}
+            try:
+                td_profile = fetch_twelvedata_profile(code, is_hk)
+            except Exception as e:
+                logger.debug("TwelveData profile failed %s:%s: %s", market, symbol, e)
+
+            if td_profile:
+                row["source"] = "tencent_quote+twelvedata"
+                for k in ("industry", "sector", "website", "description", "employees", "full_name"):
+                    v = td_profile.get(k)
+                    if v is not None:
+                        row[k] = v
+                if not cn_name and td_profile.get("name"):
+                    row["name"] = td_profile["name"]
+
+            # Tier 2: AkShare (fill remaining gaps)
+            if not row.get("industry"):
+                try:
+                    ex = fetch_cn_company_extras(code) if not is_hk else fetch_hk_company_extras(code)
+                except Exception:
+                    ex = {}
+                if ex:
+                    if "twelvedata" not in row.get("source", ""):
+                        row["source"] = "tencent_quote+akshare_em"
+                    else:
+                        row["source"] += "+akshare_em"
+                    for k in ("industry", "ipo_date", "website", "full_name"):
+                        if ex.get(k) and not row.get(k):
+                            row[k] = ex[k]
+
+            if not parts and not td_profile and not row.get("industry"):
+                return None
+            return row
+        except Exception:
+            return None
     
     # ==================== 宏观数据 (复用全球金融板块) ====================
     

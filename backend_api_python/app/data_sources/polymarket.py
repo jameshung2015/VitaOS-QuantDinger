@@ -49,19 +49,17 @@ class PolymarketDataSource:
             if cached:
                 return cached
             
-            # 从真实API获取 - 获取多个分类的数据以确保多样性
+            # 从真实API获取
             all_markets = []
             
             if category and category != "all":
-                # 如果指定了类别，只获取该类别的数据
+                # 获取所有事件，然后按类别过滤
                 markets = self._fetch_markets_from_api(category, limit * 2)
                 all_markets.extend(markets)
             else:
-                # 如果没有指定类别或指定了"all"，获取多个分类的数据
-                categories_to_fetch = ["crypto", "politics", "economics", "sports"]
-                for cat in categories_to_fetch:
-                    markets = self._fetch_markets_from_api(cat, limit // len(categories_to_fetch) + 10)
-                    all_markets.extend(markets)
+                # 获取所有事件（不指定类别，避免重复请求）
+                markets = self._fetch_from_gamma_api(category=None, limit=100)
+                all_markets.extend(markets)
             
             # 去重（按market_id）
             seen = set()

@@ -117,7 +117,7 @@ def create_client(exchange_config: Dict[str, Any], *, market_type: str = "swap")
         default_bybit = "https://api-testnet.bybit.com" if is_demo else "https://api.bybit.com"
         base_url = _get(exchange_config, "base_url", "baseUrl") or default_bybit
         category = "spot" if mt == "spot" else "linear"
-        recv_window_ms = int(exchange_config.get("recv_window_ms") or exchange_config.get("recvWindow") or 5000)
+        recv_window_ms = int(exchange_config.get("recv_window_ms") or exchange_config.get("recvWindow") or 12000)
         broker_referer = _get(exchange_config, "bybit_referer", "broker_referer", "brokerReferer") or "Ri001020"
         hedge_mode_raw = exchange_config.get("hedge_mode")
         if hedge_mode_raw is None:

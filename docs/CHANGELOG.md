@@ -4,6 +4,46 @@ This document records version updates, new features, bug fixes, and database mig
 
 ---
 
+## 2026-04-07 — 数据库：`qd_market_symbols` 补充 A股 / H股热门标的
+
+已在 **Docker** 内对运行中的 PostgreSQL 执行完毕（`INSERT 0 20`）。**新库**若使用当前仓库中的 `migrations/init.sql` 初始化，已包含同批种子数据，无需重复执行。
+
+**在已有库上手动执行（等价 SQL，可重复执行，`ON CONFLICT DO NOTHING`）：**
+
+```sql
+INSERT INTO qd_market_symbols (market, symbol, name, exchange, currency, is_active, is_hot, sort_order) VALUES
+('CNStock', '600519', '贵州茅台', 'SSE', 'CNY', 1, 1, 100),
+('CNStock', '600036', '招商银行', 'SSE', 'CNY', 1, 1, 99),
+('CNStock', '601318', '中国平安', 'SSE', 'CNY', 1, 1, 98),
+('CNStock', '600900', '长江电力', 'SSE', 'CNY', 1, 1, 97),
+('CNStock', '601899', '紫金矿业', 'SSE', 'CNY', 1, 1, 96),
+('CNStock', '000858', '五粮液', 'SZSE', 'CNY', 1, 1, 95),
+('CNStock', '000333', '美的集团', 'SZSE', 'CNY', 1, 1, 94),
+('CNStock', '002594', '比亚迪', 'SZSE', 'CNY', 1, 1, 93),
+('CNStock', '300750', '宁德时代', 'SZSE', 'CNY', 1, 1, 92),
+('CNStock', '000001', '平安银行', 'SZSE', 'CNY', 1, 1, 91),
+('HKStock', '00700', '腾讯控股', 'HKEX', 'HKD', 1, 1, 100),
+('HKStock', '09988', '阿里巴巴-W', 'HKEX', 'HKD', 1, 1, 99),
+('HKStock', '03690', '美团-W', 'HKEX', 'HKD', 1, 1, 98),
+('HKStock', '01810', '小米集团-W', 'HKEX', 'HKD', 1, 1, 97),
+('HKStock', '00939', '建设银行', 'HKEX', 'HKD', 1, 1, 96),
+('HKStock', '01299', '友邦保险', 'HKEX', 'HKD', 1, 1, 95),
+('HKStock', '02318', '中国平安', 'HKEX', 'HKD', 1, 1, 94),
+('HKStock', '00388', '香港交易所', 'HKEX', 'HKD', 1, 1, 93),
+('HKStock', '00883', '中国海洋石油', 'HKEX', 'HKD', 1, 1, 92),
+('HKStock', '01398', '工商银行', 'HKEX', 'HKD', 1, 1, 91)
+ON CONFLICT (market, symbol) DO NOTHING;
+```
+
+**Docker 一行示例（文件需 UTF-8）：**
+
+```bash
+docker cp backend_api_python/migrations/<your>.sql quantdinger-db:/tmp/migrate.sql
+docker compose exec -T postgres psql -U quantdinger -d quantdinger -f /tmp/migrate.sql
+```
+
+---
+
 ## V3.0.1 (2026-04-05) — Frontend / docs
 
 - **前端版本**：`QuantDinger-Vue-src/package.json`、页脚展示与 `frontend/VERSION` 统一为 **3.0.1**。

@@ -360,8 +360,8 @@ class PendingOrderWorker:
                             exch_size.setdefault(hb_sym, {"long": 0.0, "short": 0.0})[side] = abs(float(total))
 
                 elif isinstance(client, BybitClient) and market_type == "swap":
-                    # Bybit linear positions
-                    resp = client.get_positions()
+                    # Bybit v5 requires symbol or settleCoin — use USDT for full linear book
+                    resp = client.get_positions(settle_coin="USDT")
                     lst = (((resp.get("result") or {}).get("list")) if isinstance(resp, dict) else None) or []
                     if isinstance(lst, list):
                         for p in lst:
@@ -1234,13 +1234,14 @@ class PendingOrderWorker:
                                 actual_pos_size = pos_amt
                                 break
                 elif isinstance(client, BybitClient):
-                    pos_resp = client.get_positions() or {}
+                    pos_resp = client.get_positions(symbol=str(symbol or "")) or {}
                     pos_list = (pos_resp.get("result") or {}).get("list") or [] if isinstance(pos_resp, dict) else []
+                    want = str(symbol or "").replace("/", "").replace("-", "").upper()
                     for pos in pos_list:
                         if not isinstance(pos, dict):
                             continue
-                        pos_sym = str(pos.get("symbol") or "")
-                        if pos_sym != str(symbol or "").replace("/", ""):
+                        pos_sym = str(pos.get("symbol") or "").strip().upper()
+                        if pos_sym != want:
                             continue
                         p_side = str(pos.get("side") or "").strip().lower()
                         if (p_side == "buy" and pos_side == "long") or (p_side == "sell" and pos_side == "short"):

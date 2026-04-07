@@ -1830,7 +1830,35 @@ IMPORTANT:
         # 但要做“可用信息重加权”：当某些模块缺失（如新闻/宏观没取到），不要用0分去稀释整体强度，
         # 而是重新归一化权重，让技术信号在缺失时仍可发挥主导作用。
         market_type = str(data.get("market") or "")
-        fundamental_present = (market_type == "USStock") and bool(fundamental)
+
+        def _fundamental_meaningful(fund: Dict[str, Any]) -> bool:
+            if not fund:
+                return False
+            for key in (
+                "pe_ratio",
+                "pb_ratio",
+                "ps_ratio",
+                "market_cap",
+                "roe",
+                "eps",
+                "revenue_growth",
+                "profit_margin",
+                "dividend_yield",
+            ):
+                v = fund.get(key)
+                if v is None or v == "":
+                    continue
+                try:
+                    if isinstance(v, float) and v != v:  # NaN
+                        continue
+                    return True
+                except Exception:
+                    return True
+            return False
+
+        fundamental_present = (
+            market_type in ("USStock", "CNStock", "HKStock") and _fundamental_meaningful(fundamental)
+        )
         sentiment_present = bool(news)
         macro_present = bool(macro)
         # indicators 一旦成功计算通常就存在，但这里也做一次保护
@@ -2057,9 +2085,9 @@ IMPORTANT:
     
     def _calculate_fundamental_score(self, fundamental: Dict, market: str) -> float:
         """计算基本面评分 (-100 to +100)"""
-        if market != "USStock" or not fundamental:
-            return 0.0  # 非美股或无基本面数据，返回中性
-        
+        if market not in ("USStock", "CNStock", "HKStock") or not fundamental:
+            return 50.0
+
         score = 0.0
         factors = 0
         
@@ -2142,7 +2170,9 @@ IMPORTANT:
         # 归一化（如果有多个因素）
         if factors > 0:
             score = score / factors * 100 / 4  # 最大可能分数是4个因素各20分=80，归一化到100
-        
+        else:
+            return 50.0
+
         return max(-100, min(100, score))
     
     def _calculate_sentiment_score(self, news: List[Dict]) -> float:

@@ -18,6 +18,15 @@ class MetaAPIKeys(type):
         from app.utils.config_loader import load_addon_config
         val = load_addon_config().get('tiingo', {}).get('api_key')
         return val if val else os.getenv('TIINGO_API_KEY', '')
+
+    @property
+    def TWELVE_DATA_API_KEY(cls):
+        env_val = os.getenv('TWELVE_DATA_API_KEY', '').strip()
+        if env_val:
+            return env_val
+        from app.utils.config_loader import load_addon_config
+        val = load_addon_config().get('twelve_data', {}).get('api_key')
+        return val if val else ''
     
     @property
     def OPENROUTER_API_KEY(cls):

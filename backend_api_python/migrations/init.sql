@@ -350,6 +350,21 @@ CREATE INDEX IF NOT EXISTS idx_notifications_strategy_id ON qd_strategy_notifica
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON qd_strategy_notifications(is_read);
 
 -- =============================================================================
+-- 6b. Strategy runtime logs (dashboard / API)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS qd_strategy_logs (
+    id SERIAL PRIMARY KEY,
+    strategy_id INTEGER NOT NULL REFERENCES qd_strategies_trading(id) ON DELETE CASCADE,
+    level VARCHAR(20) DEFAULT 'info',
+    message TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_strategy_logs_strategy_id ON qd_strategy_logs(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_strategy_logs_timestamp ON qd_strategy_logs(timestamp);
+
+-- =============================================================================
 -- 7. Indicator Codes
 -- =============================================================================
 
@@ -647,7 +662,29 @@ INSERT INTO qd_market_symbols (market, symbol, name, exchange, currency, is_acti
 ('Futures', 'ZS', 'Soybeans', 'CBOT', 'USD', 1, 1, 94),
 ('Futures', 'ZW', 'Wheat', 'CBOT', 'USD', 1, 1, 93),
 ('Futures', 'ES', 'S&P 500 E-mini', 'CME', 'USD', 1, 1, 92),
-('Futures', 'NQ', 'NASDAQ 100 E-mini', 'CME', 'USD', 1, 1, 91)
+('Futures', 'NQ', 'NASDAQ 100 E-mini', 'CME', 'USD', 1, 1, 91),
+-- A股 (CNStock)
+('CNStock', '600519', '贵州茅台', 'SSE', 'CNY', 1, 1, 100),
+('CNStock', '600036', '招商银行', 'SSE', 'CNY', 1, 1, 99),
+('CNStock', '601318', '中国平安', 'SSE', 'CNY', 1, 1, 98),
+('CNStock', '600900', '长江电力', 'SSE', 'CNY', 1, 1, 97),
+('CNStock', '601899', '紫金矿业', 'SSE', 'CNY', 1, 1, 96),
+('CNStock', '000858', '五粮液', 'SZSE', 'CNY', 1, 1, 95),
+('CNStock', '000333', '美的集团', 'SZSE', 'CNY', 1, 1, 94),
+('CNStock', '002594', '比亚迪', 'SZSE', 'CNY', 1, 1, 93),
+('CNStock', '300750', '宁德时代', 'SZSE', 'CNY', 1, 1, 92),
+('CNStock', '000001', '平安银行', 'SZSE', 'CNY', 1, 1, 91),
+-- 港股/H股 (HKStock)
+('HKStock', '00700', '腾讯控股', 'HKEX', 'HKD', 1, 1, 100),
+('HKStock', '09988', '阿里巴巴-W', 'HKEX', 'HKD', 1, 1, 99),
+('HKStock', '03690', '美团-W', 'HKEX', 'HKD', 1, 1, 98),
+('HKStock', '01810', '小米集团-W', 'HKEX', 'HKD', 1, 1, 97),
+('HKStock', '00939', '建设银行', 'HKEX', 'HKD', 1, 1, 96),
+('HKStock', '01299', '友邦保险', 'HKEX', 'HKD', 1, 1, 95),
+('HKStock', '02318', '中国平安', 'HKEX', 'HKD', 1, 1, 94),
+('HKStock', '00388', '香港交易所', 'HKEX', 'HKD', 1, 1, 93),
+('HKStock', '00883', '中国海洋石油', 'HKEX', 'HKD', 1, 1, 92),
+('HKStock', '01398', '工商银行', 'HKEX', 'HKD', 1, 1, 91)
 ON CONFLICT (market, symbol) DO NOTHING;
 
 -- =============================================================================

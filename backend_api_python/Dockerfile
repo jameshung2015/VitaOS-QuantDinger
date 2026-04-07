@@ -11,6 +11,7 @@ WORKDIR /app
 RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true \
     && apt-get update \
     && apt-get install -y --no-install-recommends --fix-missing \
+    ca-certificates \
     curl \
     # Build deps (needed for some pyproject-based packages like ed25519-blake2b)
     build-essential \

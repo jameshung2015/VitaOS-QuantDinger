@@ -15,6 +15,11 @@ from app.services.strategy_snapshot import StrategySnapshotResolver
 from app import get_trading_executor
 from app.utils.logger import get_logger
 from app.utils.db import get_db_connection
+
+try:
+    from psycopg2.errors import UndefinedTable as PgUndefinedTable
+except Exception:  # pragma: no cover
+    PgUndefinedTable = None  # type: ignore
 from app.utils.auth import login_required
 from app.data_sources import DataSourceFactory
 
@@ -662,6 +667,15 @@ def get_equity_curve():
                 (strategy_id,)
             )
             rows = cur.fetchall() or []
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(unrealized_pnl), 0) AS u
+                FROM qd_strategy_positions
+                WHERE strategy_id = ?
+                """,
+                (strategy_id,),
+            )
+            prow = cur.fetchone() or {}
             cur.close()
 
         equity = initial
@@ -678,7 +692,17 @@ def get_equity_curve():
                 ts = int(created_at)
             else:
                 ts = int(time.time())
-            curve.append({'time': ts, 'equity': equity})
+            curve.append({'time': ts, 'equity': round(equity, 2)})
+
+        # 将未实现盈亏并入曲线末端，便于「持仓中」也能在绩效里看到浮动权益
+        try:
+            unreal = float(prow.get('u') or prow.get('U') or 0)
+        except Exception:
+            unreal = 0.0
+        live_equity = float(equity) + unreal
+        now_ts = int(time.time())
+        if abs(unreal) > 1e-12 or not curve:
+            curve.append({'time': now_ts, 'equity': round(live_equity, 2)})
 
         return jsonify({'code': 1, 'msg': 'success', 'data': curve})
     except Exception as e:
@@ -1391,10 +1415,15 @@ def get_strategy_performance():
 def get_strategy_logs():
     """Get strategy running logs."""
     try:
+        user_id = g.user_id
         strategy_id = request.args.get('id')
         limit = int(request.args.get('limit', 200))
         if not strategy_id:
             return jsonify({'code': 0, 'msg': 'Strategy ID required'})
+
+        st = get_strategy_service().get_strategy(int(strategy_id), user_id=user_id)
+        if not st:
+            return jsonify({'code': 0, 'msg': 'Strategy not found'}), 404
 
         with get_db_connection() as db:
             cur = db.cursor()
@@ -1411,10 +1440,22 @@ def get_strategy_logs():
             rows = cur.fetchall() or []
             cur.close()
 
-        logs = list(reversed(rows))
+        out = []
+        for r in rows or []:
+            if not isinstance(r, dict):
+                continue
+            rr = dict(r)
+            ts = rr.get('timestamp')
+            if ts is not None and hasattr(ts, 'isoformat'):
+                rr['timestamp'] = ts.isoformat()
+            out.append(rr)
+        logs = list(reversed(out))
         return jsonify({'code': 1, 'msg': 'success', 'data': logs})
     except Exception as e:
-        if 'qd_strategy_logs' in str(e) and ('does not exist' in str(e) or 'no such table' in str(e)):
+        if PgUndefinedTable is not None and isinstance(e, PgUndefinedTable):
+            return jsonify({'code': 1, 'msg': 'success', 'data': []})
+        el = str(e).lower()
+        if 'qd_strategy_logs' in el and ('does not exist' in el or 'no such table' in el):
             return jsonify({'code': 1, 'msg': 'success', 'data': []})
         logger.error(f"get_strategy_logs failed: {str(e)}")
         return jsonify({'code': 0, 'msg': str(e)}), 500

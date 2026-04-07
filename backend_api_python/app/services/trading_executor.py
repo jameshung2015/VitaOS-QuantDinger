@@ -21,6 +21,7 @@ import numpy as np
 
 from app.utils.logger import get_logger
 from app.utils.db import get_db_connection
+from app.utils.strategy_runtime_logs import append_strategy_log
 from app.data_sources import DataSourceFactory
 from app.services.kline import KlineService
 from app.services.indicator_params import IndicatorParamsParser, IndicatorCaller
@@ -52,6 +53,8 @@ class TradingExecutor:
         self._signal_dedup = {}  # type: Dict[int, Dict[str, float]]
         self._signal_dedup_lock = threading.Lock()
         self.kline_service = KlineService()   # K线服务（带缓存）
+        # Throttle writes to qd_strategy_logs (heartbeat), per strategy_id -> monotonic time
+        self._strategy_ui_log_last_tick_ts = {}  # type: Dict[int, float]
         
         # 单实例线程上限，避免无限制创建线程导致 can't start new thread/OOM
         self.max_threads = int(os.getenv('STRATEGY_MAX_THREADS', '64'))
@@ -428,6 +431,7 @@ class TradingExecutor:
                 
                 logger.info(f"Strategy {strategy_id} started")
                 self._console_print(f"[strategy:{strategy_id}] started")
+                append_strategy_log(strategy_id, "info", "策略执行线程已启动")
                 return True
                 
         except Exception as e:
@@ -466,6 +470,7 @@ class TradingExecutor:
                 
                 logger.info(f"Strategy {strategy_id} stopped")
                 self._console_print(f"[strategy:{strategy_id}] stopped (requested)")
+                append_strategy_log(strategy_id, "info", "已请求停止策略（运行标志已清除）")
                 return True
                 
         except Exception as e:
@@ -933,6 +938,11 @@ class TradingExecutor:
             logger.info(f"Strategy {strategy_id} initialized; pending_signals={len(pending_signals)}")
             if pending_signals:
                 logger.info(f"Initial signals: {pending_signals}")
+            append_strategy_log(
+                strategy_id,
+                "info",
+                f"实盘循环就绪 {symbol} {timeframe}，待处理信号 {len(pending_signals or [])} 条",
+            )
             
             # ============================================
             # Main loop: unified tick cadence (default: 10s)
@@ -1258,6 +1268,11 @@ class TradingExecutor:
                             )
                             if ok:
                                 logger.info(f"Strategy {strategy_id} signal executed: {signal_type} @ {execute_price}")
+                                append_strategy_log(
+                                    strategy_id,
+                                    "signal",
+                                    f"已提交信号 {signal_type} 参考价 {float(execute_price or 0):.6f}",
+                                )
                                 # Notify portfolio positions linked to this symbol
                                 try:
                                     from app.services.portfolio_monitor import notify_strategy_signal_for_positions
@@ -1271,6 +1286,11 @@ class TradingExecutor:
                                     logger.warning(f"Strategy signal linkage notification failed: {link_e}")
                             else:
                                 logger.warning(f"Strategy {strategy_id} signal rejected/failed: {signal_type}")
+                                append_strategy_log(
+                                    strategy_id,
+                                    "error",
+                                    f"信号未执行或拒单: {signal_type}",
+                                )
 
                     # Update positions once per tick.
                     self._update_positions(strategy_id, symbol, current_price)
@@ -1279,17 +1299,37 @@ class TradingExecutor:
                     self._console_print(
                         f"[strategy:{strategy_id}] tick price={float(current_price or 0.0):.8f} pending_signals={len(pending_signals or [])}"
                     )
+                    try:
+                        nowl = time.time()
+                        lastl = float(self._strategy_ui_log_last_tick_ts.get(strategy_id) or 0.0)
+                        if nowl - lastl >= 55.0:
+                            self._strategy_ui_log_last_tick_ts[strategy_id] = nowl
+                            append_strategy_log(
+                                strategy_id,
+                                "info",
+                                f"tick price={float(current_price or 0.0):.8f} pending_signals={len(pending_signals or [])}",
+                            )
+                    except Exception:
+                        pass
                     
                 except Exception as e:
                     logger.error(f"Strategy {strategy_id} loop error: {str(e)}")
                     logger.error(traceback.format_exc())
                     self._console_print(f"[strategy:{strategy_id}] loop error: {e}")
+                    try:
+                        append_strategy_log(strategy_id, "error", f"循环异常: {e}")
+                    except Exception:
+                        pass
                     time.sleep(5)
                     
         except Exception as e:
             logger.error(f"Strategy {strategy_id} crashed: {str(e)}")
             logger.error(traceback.format_exc())
             self._console_print(f"[strategy:{strategy_id}] fatal error: {e}")
+            try:
+                append_strategy_log(strategy_id, "error", f"策略线程致命错误: {e}")
+            except Exception:
+                pass
         finally:
             # 清理
             with self.lock:
@@ -1297,6 +1337,10 @@ class TradingExecutor:
                     del self.running_strategies[strategy_id]
             self._console_print(f"[strategy:{strategy_id}] loop exited")
             logger.info(f"Strategy {strategy_id} loop exited")
+            try:
+                append_strategy_log(strategy_id, "info", "策略执行循环已退出")
+            except Exception:
+                pass
     
     def _sync_positions_with_exchange(self, strategy_id: int, exchange: Any, symbol: str, market_type: str):
         """
