@@ -39,6 +39,16 @@ class MetaAPIKeys(type):
         from app.utils.config_loader import load_addon_config
         val = load_addon_config().get('twelve_data', {}).get('api_key')
         return val if val else ''
+
+    @property
+    def ADANOS_API_KEY(cls):
+        """Adanos Market Sentiment API key (optional)."""
+        env_val = os.getenv('ADANOS_API_KEY', '').strip()
+        if env_val:
+            return env_val
+        from app.utils.config_loader import load_addon_config
+        val = load_addon_config().get('adanos', {}).get('api_key')
+        return val if val else ''
     
     @property
     def OPENROUTER_API_KEY(cls):

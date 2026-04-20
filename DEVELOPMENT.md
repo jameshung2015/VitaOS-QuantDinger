@@ -130,6 +130,7 @@ See `backend_api_python/env.example` for the full list.  Key variables:
 | `SECRET_KEY` | **yes** | JWT signing key — must be changed from default |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | yes | Initial admin credentials |
 | `TWELVE_DATA_API_KEY` | no | Twelve Data for forex/commodities |
+| `ADANOS_API_KEY` | no | Optional Adanos Market Sentiment for US stock tickers |
 | `OPENAI_API_KEY` or `OPENROUTER_API_KEY` | no | AI analysis features |
 | `CACHE_ENABLED` | no | Set `true` to use Redis (auto-set in Docker) |
 

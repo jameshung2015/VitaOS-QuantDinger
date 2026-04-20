@@ -177,10 +177,28 @@ POST /api/users/change-password - Change own password
 ```text
 GET  /api/health
 GET  /api/indicator/kline
+GET  /api/global-market/adanos-sentiment?tickers=AAPL,TSLA
 POST /api/fast-analysis/analyze    - Fast AI analysis (main entry)
 GET  /api/fast-analysis/history    - Analysis history
 GET  /api/fast-analysis/similar-patterns - RAG similar patterns
 POST /api/fast-analysis/feedback   - User feedback on analysis
+```
+
+### Optional Adanos Market Sentiment
+
+Set `ADANOS_API_KEY` to enable optional US stock sentiment enrichment from the
+Adanos Market Sentiment API. If the key is not configured, the endpoint returns
+`enabled=false` and the rest of QuantDinger continues to work normally.
+
+```bash
+ADANOS_API_KEY=your_adanos_key
+ADANOS_SENTIMENT_SOURCE=reddit  # reddit, x, news, or polymarket
+```
+
+Example:
+
+```text
+GET /api/global-market/adanos-sentiment?tickers=AAPL,TSLA&source=reddit&days=7
 ```
 
 ## AI analysis & memory
