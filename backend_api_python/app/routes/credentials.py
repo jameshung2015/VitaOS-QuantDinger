@@ -20,6 +20,28 @@ logger = get_logger(__name__)
 credentials_bp = Blueprint('credentials', __name__)
 
 
+@credentials_bp.route('/desktop-brokers-policy', methods=['GET'])
+@login_required
+def desktop_brokers_policy():
+    """
+    Whether IBKR / MT5 (local TWS or MT5 terminal) may be configured on this deployment.
+    Frontend uses this to disable options and show guidance before save/test.
+    """
+    from app.utils.local_brokers import desktop_broker_cloud_reject_message, local_desktop_brokers_allowed
+
+    allowed = local_desktop_brokers_allowed()
+    return jsonify(
+        {
+            'code': 1,
+            'msg': 'success',
+            'data': {
+                'allow_local_desktop_brokers': allowed,
+                'disabled_message': None if allowed else desktop_broker_cloud_reject_message(),
+            },
+        }
+    )
+
+
 def _api_key_hint(api_key: str) -> str:
     if not api_key:
         return ''
@@ -127,6 +149,12 @@ def create_credential():
 
         if not exchange_id:
             return jsonify({'code': 0, 'msg': 'Missing exchange_id', 'data': None}), 400
+
+        if exchange_id in ('ibkr', 'mt5'):
+            from app.utils.local_brokers import desktop_broker_cloud_reject_message, local_desktop_brokers_allowed
+
+            if not local_desktop_brokers_allowed():
+                return jsonify({'code': 0, 'msg': desktop_broker_cloud_reject_message(), 'data': None}), 403
 
         config = {'exchange_id': exchange_id}
         hint = ''

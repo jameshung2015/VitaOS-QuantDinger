@@ -120,6 +120,8 @@ services:
       # Gunicorn concurrency (threads within the single worker process).
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-1}
       - GUNICORN_THREADS=${GUNICORN_THREADS:-8}
+      # IBKR/MT5 need local TWS or MT5 terminal; set false on SaaS cloud (see env.example).
+      - ALLOW_LOCAL_DESKTOP_BROKERS=${ALLOW_LOCAL_DESKTOP_BROKERS:-true}
     networks:
       - quantdinger-network
     healthcheck:

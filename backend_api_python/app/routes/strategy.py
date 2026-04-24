@@ -1126,32 +1126,40 @@ def test_connection():
         # Resolve credential_id → full config (merges credential keys with any overrides).
         # This allows the frontend to send just {credential_id: 5} without raw api_key/secret_key.
         from app.services.exchange_execution import resolve_exchange_config
+        from app.utils.local_brokers import desktop_broker_cloud_reject_message, local_desktop_brokers_allowed
+
         user_id = g.user_id if hasattr(g, 'user_id') else 1
         resolved = resolve_exchange_config(exchange_config, user_id=user_id)
 
         # 验证必要字段 (check resolved config after credential merge)
-        if not resolved.get('exchange_id'):
+        ex_id = (resolved.get('exchange_id') or '').strip().lower()
+        if not ex_id:
             return jsonify({'code': 0, 'msg': 'Please select an exchange', 'data': None})
-        
-        api_key = resolved.get('api_key', '')
-        secret_key = resolved.get('secret_key', '')
-        
-        # 详细日志排查
-        logger.info(f"Testing connection: exchange_id={resolved.get('exchange_id')}")
-        if api_key:
-            logger.info(f"API Key: {api_key[:5]}... (len={len(api_key)})")
-        if secret_key:
-            logger.info(f"Secret Key: {secret_key[:5]}... (len={len(secret_key)})")
-        
-        # 检查是否有特殊字符
-        if api_key and api_key.strip() != api_key:
-            logger.warning("API key contains leading/trailing whitespace")
-        if secret_key and secret_key.strip() != secret_key:
-            logger.warning("Secret key contains leading/trailing whitespace")
-            
-        if not api_key or not secret_key:
-            return jsonify({'code': 0, 'msg': 'Please provide API key and secret key', 'data': None})
-        
+
+        if ex_id in ('ibkr', 'mt5'):
+            if not local_desktop_brokers_allowed():
+                return jsonify({'code': 0, 'msg': desktop_broker_cloud_reject_message(), 'data': None})
+            logger.info("Testing connection: exchange_id=%s (local desktop broker, skipping API key check)", ex_id)
+        else:
+            api_key = resolved.get('api_key', '')
+            secret_key = resolved.get('secret_key', '')
+
+            # 详细日志排查
+            logger.info(f"Testing connection: exchange_id={resolved.get('exchange_id')}")
+            if api_key:
+                logger.info(f"API Key: {api_key[:5]}... (len={len(api_key)})")
+            if secret_key:
+                logger.info(f"Secret Key: {secret_key[:5]}... (len={len(secret_key)})")
+
+            # 检查是否有特殊字符
+            if api_key and api_key.strip() != api_key:
+                logger.warning("API key contains leading/trailing whitespace")
+            if secret_key and secret_key.strip() != secret_key:
+                logger.warning("Secret key contains leading/trailing whitespace")
+
+            if not api_key or not secret_key:
+                return jsonify({'code': 0, 'msg': 'Please provide API key and secret key', 'data': None})
+
         # Pass the resolved config (with actual keys) to the service
         result = get_strategy_service().test_exchange_connection(resolved, user_id=user_id)
         
@@ -1182,8 +1190,9 @@ def get_symbols():
     try:
         data = request.get_json() or {}
         exchange_config = data.get('exchange_config', data)
-        
-        result = get_strategy_service().get_exchange_symbols(exchange_config)
+        user_id = g.user_id if hasattr(g, 'user_id') else 1
+
+        result = get_strategy_service().get_exchange_symbols(exchange_config, user_id=user_id)
         
         if result['success']:
             return jsonify({

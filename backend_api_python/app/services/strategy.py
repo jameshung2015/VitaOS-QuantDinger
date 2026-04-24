@@ -56,19 +56,74 @@ class StrategyService:
             logger.error(f"Failed to fetch running strategies: {str(e)}")
             return []
     
-    def get_exchange_symbols(self, exchange_config: Dict[str, Any]) -> Dict[str, Any]:
+    def get_exchange_symbols(self, exchange_config: Dict[str, Any], user_id: int = 1) -> Dict[str, Any]:
         """
         Get exchange trading pairs (no API Key required)
         """
         try:
-            exchange_id = exchange_config.get('exchange_id', '')
-            proxies = exchange_config.get('proxies')
-            
-            if not exchange_id:
+            from app.services.exchange_execution import resolve_exchange_config
+
+            resolved = resolve_exchange_config(exchange_config or {}, user_id=int(user_id or 1))
+            exchange_id = (resolved.get("exchange_id") or exchange_config.get("exchange_id") or "")
+            proxies = resolved.get("proxies") or exchange_config.get("proxies")
+
+            if not str(exchange_id).strip():
                 return {'success': False, 'message': 'Please select an exchange', 'symbols': []}
 
-            # For these exchanges, prefer direct REST (no ccxt), aligned with local live-trading design.
             ex = str(exchange_id or "").strip().lower()
+
+            # IBKR / MT5 are not CCXT exchanges; do not fall through to crypto symbol list.
+            if ex in ("ibkr", "mt5"):
+                from app.utils.local_brokers import desktop_broker_cloud_reject_message, local_desktop_brokers_allowed
+
+                if not local_desktop_brokers_allowed():
+                    return {"success": False, "message": desktop_broker_cloud_reject_message(), "symbols": []}
+
+                if ex == "ibkr":
+                    # US tickers for convenience; full universe is broker-side.
+                    common = [
+                        "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "NFLX", "INTC",
+                        "SPY", "QQQ", "IWM", "DIA", "VOO", "BABA", "JD", "PDD", "COIN", "MSTR",
+                    ]
+                    return {
+                        "success": True,
+                        "message": "IBKR: 以下为常用美股代码示例，也可手动输入其他在 TWS 中可交易的代码。",
+                        "symbols": common,
+                    }
+
+                if ex == "mt5":
+                    try:
+                        from app.services.live_trading.factory import create_mt5_client
+
+                        mt5_client = create_mt5_client(resolved)
+                        if mt5_client and mt5_client.connected:
+                            infos = mt5_client.get_symbols(group="*") or []
+                            names: List[str] = []
+                            for info in infos:
+                                if isinstance(info, dict):
+                                    n = str(info.get("name") or "").strip()
+                                    if n:
+                                        names.append(n)
+                            names = sorted(set(names))[:2000]
+                            return {
+                                "success": True,
+                                "message": f"MT5: {len(names)} symbols from terminal",
+                                "symbols": names,
+                            }
+                        return {
+                            "success": False,
+                            "message": "MT5 未连接：请确认本机已启动 MT5 终端且账号配置正确。",
+                            "symbols": [],
+                        }
+                    except Exception as e:
+                        logger.error(f"MT5 get_symbols failed: {e}")
+                        return {
+                            "success": False,
+                            "message": f"MT5 品种列表失败: {e}",
+                            "symbols": [],
+                        }
+
+            # For these exchanges, prefer direct REST (no ccxt), aligned with local live-trading design.
             if ex in ("bybit", "coinbaseexchange", "coinbase_exchange", "kraken", "kucoin", "gate"):
                 import requests
 
@@ -269,6 +324,16 @@ class StrategyService:
                 if not exchange_id:
                     return {'success': False, 'message': 'Missing exchange_id', 'data': None}
 
+                if exchange_id in ("ibkr", "mt5"):
+                    from app.utils.local_brokers import desktop_broker_cloud_reject_message, local_desktop_brokers_allowed
+
+                    if not local_desktop_brokers_allowed():
+                        return {
+                            "success": False,
+                            "message": desktop_broker_cloud_reject_message(),
+                            "data": {"exchange": safe_cfg},
+                        }
+
                 # Handle MT5 (Forex) connection test
                 if exchange_id == 'mt5':
                     # Validate that MT5 is only used for Forex market
@@ -314,6 +379,18 @@ class StrategyService:
 
                 # Handle IBKR (US Stocks) connection test
                 if exchange_id == 'ibkr':
+                    market_category_ib = str(
+                        resolved.get("market_category") or exchange_config.get("market_category") or ""
+                    ).strip()
+                    if market_category_ib and market_category_ib != "USStock":
+                        return {
+                            "success": False,
+                            "message": (
+                                f"IBKR only supports US stocks (market_category=USStock), "
+                                f"but got '{market_category_ib}'. Please switch market type to US Stock."
+                            ),
+                            "data": {"exchange": safe_cfg},
+                        }
                     try:
                         from app.services.live_trading.factory import create_ibkr_client
                         ibkr_client = create_ibkr_client(resolved)
@@ -862,12 +939,24 @@ class StrategyService:
         trading_config = payload.get('trading_config') or {}
         exchange_config = payload.get('exchange_config') or {}
 
+        from app.services.exchange_execution import resolve_exchange_config
+
+        resolved_ex_cfg = resolve_exchange_config(
+            exchange_config if isinstance(exchange_config, dict) else {},
+            user_id=int(user_id or 1),
+        )
+
         # Validate MT5 can only be used for Forex trading
-        exchange_id = (exchange_config.get('exchange_id') or '').strip().lower() if isinstance(exchange_config, dict) else ''
+        exchange_id = (resolved_ex_cfg.get('exchange_id') or '').strip().lower() if isinstance(resolved_ex_cfg, dict) else ''
         if exchange_id == 'mt5' and market_category != 'Forex':
             raise ValueError(
                 f"MT5 can only be used for Forex trading, but market_category is '{market_category}'. "
                 f"MT5 does not support Crypto or Stock trading. Please use MT5 only with Forex market."
+            )
+        if exchange_id == 'ibkr' and market_category != 'USStock':
+            raise ValueError(
+                f"IBKR can only be used for US stock trading, but market_category is '{market_category}'. "
+                f"Please set market category to US Stock when using Interactive Brokers."
             )
 
         # When credential_id is present, strip raw API keys to avoid
@@ -972,11 +1061,20 @@ class StrategyService:
         # Validate MT5 can only be used for Forex trading
         market_category = payload.get('market_category') or 'Crypto'
         exchange_config = payload.get('exchange_config') or {}
-        exchange_id = (exchange_config.get('exchange_id') or '').strip().lower() if isinstance(exchange_config, dict) else ''
+        from app.services.exchange_execution import resolve_exchange_config as _resolve_ex
+
+        uid_bc = int(payload.get('user_id') or 1)
+        _resolved_bc = _resolve_ex(exchange_config if isinstance(exchange_config, dict) else {}, user_id=uid_bc)
+        exchange_id = (_resolved_bc.get('exchange_id') or '').strip().lower() if isinstance(_resolved_bc, dict) else ''
         if exchange_id == 'mt5' and market_category != 'Forex':
             raise ValueError(
                 f"MT5 can only be used for Forex trading, but market_category is '{market_category}'. "
                 f"MT5 does not support Crypto or Stock trading. Please use MT5 only with Forex market."
+            )
+        if exchange_id == 'ibkr' and market_category != 'USStock':
+            raise ValueError(
+                f"IBKR can only be used for US stock trading, but market_category is '{market_category}'. "
+                f"Please set market category to US Stock when using Interactive Brokers."
             )
         
         # Generate strategy group ID
@@ -1163,6 +1261,22 @@ class StrategyService:
             trading_config['long_ratio'] = payload.get('long_ratio')
         if payload.get('rebalance_frequency') is not None:
             trading_config['rebalance_frequency'] = payload.get('rebalance_frequency')
+
+        from app.services.exchange_execution import resolve_exchange_config as _resolve_ex_upd
+
+        _merged_ex = _resolve_ex_upd(
+            exchange_config if isinstance(exchange_config, dict) else {},
+            user_id=int(user_id or 1),
+        )
+        ex_id = (_merged_ex.get('exchange_id') or '').strip().lower() if isinstance(_merged_ex, dict) else ''
+        if ex_id == 'mt5' and market_category != 'Forex':
+            raise ValueError(
+                f"MT5 can only be used for Forex trading, but market_category is '{market_category}'."
+            )
+        if ex_id == 'ibkr' and market_category != 'USStock':
+            raise ValueError(
+                f"IBKR can only be used for US stock trading, but market_category is '{market_category}'."
+            )
 
         symbol = (trading_config or {}).get('symbol')
         timeframe = (trading_config or {}).get('timeframe')

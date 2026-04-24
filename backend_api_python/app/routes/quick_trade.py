@@ -292,6 +292,22 @@ def _create_client(exchange_config: Dict[str, Any], market_type: str = "swap"):
     return create_client(exchange_config, market_type=market_type)
 
 
+def _reject_quick_trade_if_desktop_broker(exchange_id: str):
+    """Quick Trade is USDT-centric and crypto-only; IBKR/MT5 use strategy live execution."""
+    e = (exchange_id or "").strip().lower()
+    if e in ("ibkr", "mt5"):
+        return jsonify(
+            {
+                "code": 0,
+                "msg": (
+                    "Quick Trade 仅支持加密货币；IBKR / MT5 请通过「交易策略」绑定该凭证并开启实盘/信号执行。"
+                    " | Quick Trade supports crypto only. Bind IBKR/MT5 on a trading strategy for live orders."
+                ),
+            }
+        ), 400
+    return None
+
+
 def _record_quick_trade(
     user_id: int,
     credential_id: int,
@@ -418,6 +434,10 @@ def place_order():
         exchange_id = (exchange_config.get("exchange_id") or "").strip().lower()
         if not exchange_id:
             return jsonify({"code": 0, "msg": "Invalid credential: missing exchange_id"}), 400
+
+        qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id)
+        if qt_rej is not None:
+            return qt_rej
 
         client = _create_client(exchange_config, market_type=market_type)
 
@@ -663,6 +683,10 @@ def get_balance():
 
         exchange_config = _build_exchange_config(credential_id, user_id, {"market_type": market_type})
         exchange_id = (exchange_config.get("exchange_id") or "").strip().lower()
+        qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id)
+        if qt_rej is not None:
+            return qt_rej
+
         client = _create_client(exchange_config, market_type=market_type)
 
         balance_data = {"available": 0, "total": 0, "currency": "USDT"}
@@ -1060,6 +1084,11 @@ def get_position():
             return jsonify({"code": 0, "msg": "Missing credential_id or symbol"}), 400
 
         exchange_config = _build_exchange_config(credential_id, user_id, {"market_type": market_type})
+        exchange_id_pos = (exchange_config.get("exchange_id") or "").strip().lower()
+        qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id_pos)
+        if qt_rej is not None:
+            return qt_rej
+
         client = _create_client(exchange_config, market_type=market_type)
 
         positions = []
@@ -1299,7 +1328,11 @@ def close_position():
         exchange_id = (exchange_config.get("exchange_id") or "").strip().lower()
         if not exchange_id:
             return jsonify({"code": 0, "msg": "Invalid credential: missing exchange_id"}), 400
-        
+
+        qt_rej = _reject_quick_trade_if_desktop_broker(exchange_id)
+        if qt_rej is not None:
+            return qt_rej
+
         client = _create_client(exchange_config, market_type=market_type)
         
         # ---- get current position ----
