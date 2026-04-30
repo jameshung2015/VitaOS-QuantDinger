@@ -23,7 +23,6 @@
       <span style="color: #d8dee4;"> &nbsp;·&nbsp; </span>
       <a href="https://aws.amazon.com/marketplace/pp/prodview-naanrb7d2mbc6"><strong>AWS Marketplace</strong></a>
     </p>
-    <p style="margin: 0 0 10px; color: #656d76; font-size: 12px; letter-spacing: 0.1em; font-weight: 600;">社区与联系</p>
     <p style="margin: 0; line-height: 2;">
       <a href="https://t.me/quantdinger"><img src="https://img.shields.io/badge/Telegram-Join-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram"></a>
       &nbsp;
@@ -47,7 +46,7 @@
     <a href="https://aws.amazon.com/marketplace/pp/prodview-naanrb7d2mbc6"><img src="https://img.shields.io/badge/AWS%20Marketplace-AMI%20%7C%20CentOS%209-232F3E?style=flat-square&logo=amazonaws&logoColor=white" alt="通过 AWS Marketplace 部署（ThinkCloud CentOS 9 AMI）"></a>
   </p>
   <p style="margin: 12px 0 10px;">
-    <a href="https://oosmetrics.com/repo/brokermr810/QuantDinger"><img src="https://api.oosmetrics.com/api/v1/badge/achievement/4991ab54-52d2-46d4-a03a-67b47b61ae4b.svg" alt="oosmetrics — Training 类加速性能第 7 名（2026-04-25）"></a>
+    <a href="https://oosmetrics.com/repo/brokermr810/QuantDinger"><img src="https://api.oosmetrics.com/api/v1/badge/achievement/4991ab54-52d2-46d4-a03a-67b47b61ae4b.svg" alt="oosmetrics — Training 类第 7 名（2026-04-25）"></a>
   </p>
   <p style="margin-top: 14px;">
     <a href="https://www.producthunt.com/products/quantdinger/launches/quantdinger?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-quantdinger" target="_blank" rel="noopener noreferrer"><img alt="QuantDinger — 本地优先的开源 AI 量化工作台 | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1057439&amp;theme=light&amp;t=1777556016131"></a>

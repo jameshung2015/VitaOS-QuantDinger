@@ -23,7 +23,6 @@
       <span style="color: #d8dee4;"> &nbsp;·&nbsp; </span>
       <a href="https://aws.amazon.com/marketplace/pp/prodview-naanrb7d2mbc6"><strong>AWS Marketplace</strong></a>
     </p>
-    <p style="margin: 0 0 10px; color: #656d76; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600;">Community</p>
     <p style="margin: 0; line-height: 2;">
       <a href="https://t.me/quantdinger"><img src="https://img.shields.io/badge/Telegram-Join-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram"></a>
       &nbsp;
