@@ -205,7 +205,69 @@ MCP is **additive**: REST stays the source of truth, MCP only re-shapes it for c
 
 ---
 
-## 8. Mapping to existing code
+## 8. Deployment topologies (self-hosted vs SaaS)
+
+QuantDinger ships as a **single backend** that intentionally supports two operational topologies. The Agent Gateway code is identical in both; the differences are entirely operator-controlled environment variables and where the database lives.
+
+### 8.1 Topologies
+
+| Dimension | **Self-hosted** (default) | **SaaS / shared / hosted** |
+|-----------|---------------------------|----------------------------|
+| Selector env var | `QUANTDINGER_DEPLOYMENT_MODE` unset (or `self`/`local`) | `QUANTDINGER_DEPLOYMENT_MODE=saas` (also `hosted`/`shared`/`multitenant`) |
+| Tenants per instance | 1 (the operator) | N (one per signup) |
+| Token issuance | Operator decides every field | Server forces `paper_only=true`; **T-scope rejected at issuance with 403** |
+| Live trading (`AGENT_LIVE_TRADING_ENABLED`) | Operator may flip to `true` | **Must stay `false`** — the SaaS guard makes T impossible to obtain anyway |
+| Exchange credentials | Operator may store + use them | Recommended: do not accept; if you do, encrypt-at-rest and never expose via Agent Gateway (class C is admin-only) |
+| Rate limits | `rate_limit_per_min` per token, no global cap | Per-token + a per-tenant + per-IP outer cap (recommended; outside this code) |
+| Audit visibility | Operator | SaaS operator (you) sees everyone; tenant admins see only their own (already enforced by `user_id` filter in `/admin/audit`) |
+| MCP `BASE_URL` | `http://localhost:8888` (or LAN URL) | `https://ai.quantdinger.com` (or your hosted URL) |
+
+### 8.2 The hosted-mode guard (V3.1.0+)
+
+When `QUANTDINGER_DEPLOYMENT_MODE` is one of `saas` / `hosted` / `shared` / `multitenant` / `multi-tenant`, the `POST /admin/tokens` route applies two **belt + suspenders** safeguards (`app/routes/agent_v1/admin.py`):
+
+1. **Loud rejection of T-scope** — any payload that includes `T` in `scopes` returns `403` with a clear message, instead of silently downgrading the scope set. This makes the constraint visible to integrators rather than mysteriously stripping their request.
+2. **Forced `paper_only=true`** — even if T somehow re-entered the scope set later, the token row is written with `paper_only=true`, so `quick-trade` would still record paper orders only.
+
+These guards run at **issuance time**, so a hosted instance never has an at-rest token capable of routing real-money trades. The guards are independent of `AGENT_LIVE_TRADING_ENABLED` (which gates execution); together they make hosted-mode live trading impossible to achieve through any combination of misconfiguration.
+
+Tested by `tests/test_agent_v1_saas_guard.py` (13 cases: env-var spelling, T-scope rejection, paper-only force-pin, self-hosted regression).
+
+### 8.3 Recommended outer hardening for SaaS
+
+Beyond the in-process guard, a hosted deployment should add at the proxy / infra layer:
+
+- **HTTPS-only** with HSTS; no plaintext Agent token traffic.
+- **Per-tenant + per-IP rate limit** in front of the app (e.g. nginx `limit_req_zone` keyed on `Authorization`), in addition to the in-process per-token cap.
+- **CORS**: `/api/agent/v1/*` should not be exposed to browser CORS — agents call from servers / IDE subprocess / native code, not from web pages.
+- **Quota / billing hook**: subclass `agent_jobs.submit_job` (or wrap it in your billing middleware) so kinds in `{ai_optimize, ai_pipeline, structured_tune}` deduct credits the same way the human AI surfaces do.
+- **Token reveal hygiene**: full token shown once in the Vue admin UI, never logged, never echoed back from `/admin/tokens` GET. Already enforced.
+
+### 8.4 Migration between topologies
+
+Switching a running deployment from self-hosted to SaaS is non-destructive:
+
+```bash
+# Add to the env file used by docker-compose
+QUANTDINGER_DEPLOYMENT_MODE=saas
+docker compose up -d backend
+```
+
+After restart:
+- Existing T-scope tokens **continue to work** (the guard runs at issuance, not on each request) — the operator should `DELETE /admin/tokens/{id}` for any token they no longer want active under SaaS rules. A future enhancement may add a one-shot "revoke all T tokens on mode change" startup task.
+- New issuances follow SaaS rules immediately.
+
+### 8.5 Why a single binary serves both
+
+We deliberately did **not** fork SaaS into a separate codebase:
+
+- **Less drift**: every bug fix and feature ships to both topologies on the same release.
+- **Self-host parity**: enterprise/private users get bit-for-bit identical Agent Gateway behavior to the hosted demo, so trust transfers.
+- **Test surface**: the `_is_saas_mode()` branch is a single env-var check, easy to cover (and is, in `test_agent_v1_saas_guard.py`).
+
+---
+
+## 9. Mapping to existing code
 
 | Concern | Existing code | Reuse strategy |
 |---------|----------------|----------------|
@@ -219,7 +281,7 @@ No new Python packages are required for the gateway itself; storage uses existin
 
 ---
 
-## 9. Phased roadmap
+## 10. Phased roadmap
 
 | Phase | Deliverable | Risk class enabled | Human action required |
 |-------|-------------|--------------------|------------------------|
@@ -235,7 +297,7 @@ A1–A4 are **safe to ship without trading exposure**. A5/A6 are gated and rever
 
 ---
 
-## 10. Open questions
+## 11. Open questions
 
 1. **Token storage location** — share `qd_users` table family vs new schema namespace?
 2. **Job runner** — reuse existing worker toggles (`ENABLE_PENDING_ORDER_WORKER`, etc.) or introduce a dedicated `agent-jobs` worker? Prefer the latter for blast-radius isolation.
@@ -245,7 +307,7 @@ A1–A4 are **safe to ship without trading exposure**. A5/A6 are gated and rever
 
 ---
 
-## 11. Implementation status
+## 12. Implementation status
 
 | Area | Status | Where it lives |
 |------|--------|----------------|
@@ -262,12 +324,15 @@ A1–A4 are **safe to ship without trading exposure**. A5/A6 are gated and rever
 | Operator quickstart | Shipped | `docs/agent/AGENT_QUICKSTART.md` |
 | Job progress streaming (SSE) | Shipped | `GET /api/agent/v1/jobs/{id}/stream` — `snapshot` / `progress` / `ping` / `result` frames; resume via `?since=` or `Last-Event-ID` |
 | Admin UI for tokens & audit | Shipped | `QuantDinger-Vue-src/src/views/agent-tokens/index.vue` (admin-only route `/agent-tokens`) |
-| Live execution implementation (T) | Pending | tracked under roadmap A6 |
+| Hosted-mode hardening (`QUANTDINGER_DEPLOYMENT_MODE=saas`) | Shipped | `app/routes/agent_v1/admin.py` — issuance-time T-scope rejection + `paper_only` force-pin; covered by `tests/test_agent_v1_saas_guard.py` |
+| Published MCP package on PyPI | Shipped | [`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/) — install via `pipx`, `uvx`, or `pip` |
+| Live execution implementation (T, self-host only) | Pending | tracked under roadmap A6 |
 
-## 12. Revision history
+## 13. Revision history
 
 | Version | Date | Notes |
 |---------|------|--------|
 | 0.1 | 2026-05-02 | First draft: personas, capability classes, gateway, MCP, safety, roadmap |
 | 0.2 | 2026-05-02 | A0–A5 implemented (schema, auth, R/W/B + paper-only T, admin, MCP, tests, OpenAPI, quickstart) |
 | 0.3 | 2026-05-02 | Added: SSE progress streaming for jobs, MCP HTTP/SSE transport, Vue admin UI for token & audit management |
+| 0.4 | 2026-05-02 | Added §8 Deployment topologies; shipped hosted-mode guard (`QUANTDINGER_DEPLOYMENT_MODE=saas` → T-scope rejected, `paper_only` pinned); MCP package published to PyPI; README EN/CN now documents the SaaS vs self-host paths side-by-side |

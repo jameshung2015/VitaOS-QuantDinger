@@ -8,9 +8,25 @@ Endpoints:
   POST   /admin/tokens         issue a new token (admin only)
   GET    /admin/tokens         list tokens (admin only)
   DELETE /admin/tokens/{id}    revoke (admin only)
+
+Deployment-mode hardening
+-------------------------
+When the env var ``QUANTDINGER_DEPLOYMENT_MODE`` is set to ``saas`` (or
+``shared`` / ``hosted``), this module applies extra guards on token issuance:
+
+* ``paper_only`` is forced to ``True`` regardless of what the operator passes.
+* The ``T`` (Trading) scope is rejected outright — multi-tenant SaaS instances
+  must never let a token route real-money orders, even with an additional
+  server-side switch. Self-hosted deployments leave the env var unset and
+  retain full flexibility.
+
+The flag is intentionally **operator-controlled** (set in `env.example` /
+docker-compose), not user-controlled, so a SaaS operator opts into the
+hardened mode by deployment configuration.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 
 from app.utils.agent_auth import (
@@ -25,6 +41,17 @@ from . import agent_v1_bp
 from ._helpers import envelope, error, get_json_or_400
 
 logger = get_logger(__name__)
+
+
+# ──────────────────────────── deployment-mode guard ───────────────────────────
+# These spellings all map to "this is a multi-tenant hosted instance, lock down
+# anything that could touch real money or cross-tenant blast radius".
+_SAAS_MODE_VALUES = {"saas", "shared", "hosted", "multitenant", "multi-tenant"}
+
+
+def _is_saas_mode() -> bool:
+    raw = (os.environ.get("QUANTDINGER_DEPLOYMENT_MODE") or "").strip().lower()
+    return raw in _SAAS_MODE_VALUES
 
 
 def _normalize_expiry(days: int | None) -> datetime | None:
@@ -59,6 +86,21 @@ def issue_token():
     if not scopes.issubset(set(ALL_SCOPES)):
         return error(400, f"Unknown scope in {sorted(scopes)}")
 
+    saas_mode = _is_saas_mode()
+
+    # In multi-tenant hosted mode, a token must never route real-money trades.
+    # Reject the request loudly so the caller knows their request was modified —
+    # silently downgrading scopes would be a privacy/clarity footgun.
+    if saas_mode and "T" in scopes:
+        return error(
+            403,
+            "T-scope (live trading) tokens are not available on this hosted "
+            "deployment. Self-host QuantDinger if you need to route real-money "
+            "orders through the Agent Gateway.",
+            details="QUANTDINGER_DEPLOYMENT_MODE=saas blocks T-scope at issuance.",
+            http=403,
+        )
+
     markets = parse_csv_list(body.get("markets"), default="*")
     instruments = parse_csv_list(body.get("instruments"), default="*")
     paper_only = bool(body.get("paper_only", True))
@@ -66,6 +108,11 @@ def issue_token():
         # Operator can opt-in by passing paper_only=false explicitly; we never
         # silently grant live trading to a token created without that flag.
         paper_only = False
+    if saas_mode:
+        # Belt + suspenders: even if T is somehow re-introduced, paper-only
+        # stays pinned for hosted deployments.
+        paper_only = True
+
     rate_limit = int(body.get("rate_limit_per_min") or 60)
     expires_at = _normalize_expiry(body.get("expires_in_days"))
 

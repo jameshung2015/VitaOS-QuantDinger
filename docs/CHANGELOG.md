@@ -39,8 +39,9 @@ This document records version updates, new features, bug fixes, and database mig
 - 任务已结束时直接给 `snapshot + result` 后关闭，客户端无需写两套逻辑。
 - Runner 接入约定：`runner(payload, on_progress)` 第二参数自动被探测到，事件同时投递给 SSE 订阅者并写入 `qd_agent_jobs.progress` JSONB（断线重连可读取最新快照）。
 
-#### MCP Server（`mcp_server/`）
+#### MCP Server（`mcp_server/` —— 已发布到 PyPI: [`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/)）
 独立 Python 包，把 Agent Gateway 的 R / B 子集包成 Model Context Protocol 工具：
+- 一行装好（任意机器，不用 clone 仓库）：`uvx quantdinger-mcp` / `pipx install quantdinger-mcp` / `pip install quantdinger-mcp`。
 - 三种 transport，由环境变量 `QUANTDINGER_MCP_TRANSPORT` 选：
   - `stdio`（默认）—— 桌面 IDE（Cursor / Claude Code）以子进程启动
   - `sse` —— 仅支持 SSE 的客户端

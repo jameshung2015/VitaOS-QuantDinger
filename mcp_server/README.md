@@ -1,9 +1,13 @@
 # QuantDinger MCP server
 
+[![PyPI](https://img.shields.io/pypi/v/quantdinger-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/quantdinger-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/quantdinger-mcp?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/quantdinger-mcp/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](../LICENSE)
+
 Thin Model Context Protocol server that exposes a curated subset of the
 QuantDinger Agent Gateway (`/api/agent/v1`) as MCP tools, so AI clients
-that support MCP (Cursor, Claude-style desktop apps, etc.) can drive
-QuantDinger without writing custom HTTP code.
+that support MCP (Cursor, Claude-style desktop apps, OpenClaw, NanoBot, etc.)
+can drive QuantDinger without writing custom HTTP code.
 
 This package is an **additive** integration. The Agent Gateway REST API
 remains the source of truth.
@@ -28,7 +32,19 @@ explicitly enable trading for an agent.
 | `regime_detect`        | B | Synchronous regime detection |
 | `submit_structured_tune` | B | Queue grid/random tuning |
 
-## Install (editable)
+## Install
+
+From PyPI (recommended — works on any machine without cloning the repo):
+
+```bash
+pipx install quantdinger-mcp
+# or, no install at all (cached on first run):
+uvx quantdinger-mcp
+# or, into a venv:
+pip install quantdinger-mcp
+```
+
+Editable install for hacking on the server itself:
 
 ```bash
 cd mcp_server

@@ -102,6 +102,95 @@ If you installed **Git for Windows**, open **Git Bash** and you can use the **ma
 
 Then open **`http://localhost:8888`**, sign in with **`quantdinger` / `123456`**, and **change the default admin password** before any real use. For prerequisites, configuration details, first-run checks, and troubleshooting, continue to **[Installation & first-time setup](#installation--first-time-setup-docker-compose)** below.
 
+## Use it from an AI agent (Cursor / Claude Code / Codex / MCP)
+
+QuantDinger ships an **Agent Gateway** at `/api/agent/v1` and a small **MCP server** that wraps it as Model Context Protocol tools. Once you sign in once and issue a token, your AI client can read markets, manage strategies, run backtests, and (paper-only by default) place trades — without ever seeing your exchange keys or your admin JWT.
+
+> Two safety properties are non-negotiable: every agent call is **audit-logged**, and trading-class tokens are **paper-only by default**. Live execution requires both `paper_only=false` on the token AND `AGENT_LIVE_TRADING_ENABLED=true` on the server.
+
+### Step 1 — Get an agent token (two paths, your choice)
+
+The MCP client and the wiring in Step 2 are **identical** for both paths — only the value of `QUANTDINGER_BASE_URL` changes.
+
+**Path A · Hosted ([ai.quantdinger.com](https://ai.quantdinger.com)) — try it in 30 seconds.** Sign up → open **Sidebar → Agent Tokens** → **Issue Token**. The hosted instance is locked to `paper_only=true` and the **T** (Trading) scope is rejected at issuance — agents can read markets, manage strategies in your tenant, and run backtests, but never route real-money orders. Set `QUANTDINGER_BASE_URL=https://ai.quantdinger.com`. Best for: trying QuantDinger from Cursor / Claude Code without installing anything; demos; research notebooks against shared datasets.
+
+**Path B · Self-hosted (this repo) — production / private data / live trading.** After the [Try in 2 minutes](#try-in-2-minutes) Docker bring-up, log in as admin and open **Sidebar → Agent Tokens** (or `http://localhost:8888/#/agent-tokens`). You decide scopes (incl. **T**), market/instrument allowlists, rate limits, and whether `AGENT_LIVE_TRADING_ENABLED=true` is ever flipped. Set `QUANTDINGER_BASE_URL=http://localhost:8888` (or your LAN URL). Best for: anyone with their own exchange keys, anyone with private strategies/data, teams behind a VPN, or anyone who eventually wants live execution.
+
+In either path:
+
+1. Click **Issue Token** → name it (`cursor-mcp`, `claude-research`, …).
+2. Pick scopes — start with **R + B** (read + backtest); add **W** to let the agent create/edit strategies.
+3. Copy the token **once** — the dialog shows the full string once; the server only keeps a SHA-256 hash.
+
+Prefer the CLI? See [`docs/agent/AGENT_QUICKSTART.md`](docs/agent/AGENT_QUICKSTART.md) for the equivalent `curl`.
+
+### Step 2 — Wire the MCP server into your AI client
+
+The MCP server lives in [`mcp_server/`](mcp_server/). Two transports work everywhere:
+
+**A. Local stdio (Cursor, Claude Code, Codex desktop, etc.)** — the server is published on PyPI as [`quantdinger-mcp`](https://pypi.org/project/quantdinger-mcp/). Drop this into `.cursor/mcp.json`, `~/.config/claude/claude_desktop_config.json`, or your client's equivalent (template: [`docs/agent/cursor-mcp.example.json`](docs/agent/cursor-mcp.example.json)):
+
+```json
+{
+  "mcpServers": {
+    "quantdinger": {
+      "command": "uvx",
+      "args": ["quantdinger-mcp"],
+      "env": {
+        "QUANTDINGER_BASE_URL":    "http://localhost:8888",
+        "QUANTDINGER_AGENT_TOKEN": "qd_agent_xxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+`uvx` ([install uv](https://docs.astral.sh/uv/getting-started/installation/)) downloads + caches the package on first run; no virtualenv setup. If you prefer pip:
+
+```bash
+pip install quantdinger-mcp
+# then use {"command": "quantdinger-mcp", "args": []}
+```
+
+For Claude Code's CLI helper:
+
+```bash
+claude mcp add quantdinger \
+  --env QUANTDINGER_BASE_URL=http://localhost:8888 \
+  --env QUANTDINGER_AGENT_TOKEN=qd_agent_xxxxxxxx \
+  -- uvx quantdinger-mcp
+```
+
+**B. Remote HTTP (cloud agents like OpenClaw / NanoBot, browser IDEs, anything that can't spawn subprocesses)** — run the MCP server as a long-lived service, then point clients at the URL:
+
+```bash
+QUANTDINGER_BASE_URL=https://your-host \
+QUANTDINGER_AGENT_TOKEN=qd_agent_xxxxxxxx \
+QUANTDINGER_MCP_TRANSPORT=streamable-http \
+QUANTDINGER_MCP_HOST=0.0.0.0 \
+QUANTDINGER_MCP_PORT=7800 \
+quantdinger-mcp
+# clients connect to http://your-host:7800
+```
+
+Use `QUANTDINGER_MCP_TRANSPORT=sse` instead for clients that only speak the older SSE transport. Put a reverse proxy in front for TLS and IP allowlisting.
+
+### Step 3 — Talk to your agent
+
+Restart the IDE, then ask things like:
+
+- *"Pull the last 90 daily candles for BTC/USDT and tell me what the regime detector says."*
+- *"Backtest the 20/60 SMA crossover on ETH/USDT 4h between 2024-01-01 and 2024-06-30 and stream the result as it runs."*
+- *"Create a strategy named **eth-trend-bot**, use the indicator I just designed, leave it in `stopped` state."*
+
+Long-running jobs (`/api/agent/v1/jobs/{id}/stream`) are exposed as SSE so the agent can react to partial results without polling. Every call shows up under **Agent Tokens → Audit log** with route, scope class, status code, and duration.
+
+### Want to use QuantDinger as a *coding* agent context too?
+
+If you're editing this repo with Cursor / Claude Code / Codex, the repo also ships a Cursor Skill at [`.cursor/skills/quantdinger-agent-workflow/SKILL.md`](.cursor/skills/quantdinger-agent-workflow/SKILL.md) that explains the Agent Gateway internals, red lines (no real keys, paper-only by default), and where to verify changes. Read [`docs/agent/AGENT_ENVIRONMENT_DESIGN.md`](docs/agent/AGENT_ENVIRONMENT_DESIGN.md) for the full layered-contracts model.
+
+Deeper links: [AI Integration design](docs/agent/AI_INTEGRATION_DESIGN.md) · [Quickstart with `curl`](docs/agent/AGENT_QUICKSTART.md) · [OpenAPI 3.0 spec](docs/agent/agent-openapi.json) · [MCP server README](mcp_server/README.md)
+
 ## What is QuantDinger?
 
 QuantDinger is built for people who want **one controlled environment** instead of stitching together chart apps, Jupyter, bots, and dashboards:
