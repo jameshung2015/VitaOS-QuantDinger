@@ -13,6 +13,16 @@
       <a href="README.md"><strong>English</strong></a>
       <span style="color: #afb8c1;"> · </span>
       <a href="docs/README_CN.md"><strong>简体中文</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="docs/README_JA.md"><strong>日本語</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="docs/README_KO.md"><strong>한국어</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="docs/README_TH.md"><strong>ไทย</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="docs/README_VI.md"><strong>Tiếng Việt</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="docs/README_AR.md"><strong>العربية</strong></a>
     </p>
     <p style="margin: 0 0 18px; padding-bottom: 16px; border-bottom: 1px solid #eaeef2; line-height: 2;">
       <a href="https://ai.quantdinger.com"><strong>SaaS</strong></a>
@@ -570,6 +580,7 @@ Use `backend_api_python/env.example` as the primary template. Key areas include:
 |-----|--------|
 | [Changelog](docs/CHANGELOG.md) | Releases & migrations |
 | [README (中文)](docs/README_CN.md) | Chinese overview |
+| [JA](docs/README_JA.md) · [KO](docs/README_KO.md) · [TH](docs/README_TH.md) · [VI](docs/README_VI.md) · [AR](docs/README_AR.md) | Concise localized READMEs (Japanese, Korean, Thai, Vietnamese, Arabic) |
 | [Cloud deployment](docs/CLOUD_DEPLOYMENT_EN.md) | HTTPS, reverse proxy, production |
 | [Multi-user](docs/multi-user-setup.md) | Postgres multi-tenant patterns |
 | [Agent environment](docs/agent/AGENT_ENVIRONMENT_DESIGN.md) · [AI integration](docs/agent/AI_INTEGRATION_DESIGN.md) · [Quickstart](docs/agent/AGENT_QUICKSTART.md) · [OpenAPI](docs/agent/agent-openapi.json) · [MCP server](mcp_server/README.md) | Coding agents & MCP (`quantdinger-mcp` on PyPI) |

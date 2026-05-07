@@ -13,6 +13,16 @@
       <a href="../README.md"><strong>English</strong></a>
       <span style="color: #afb8c1;"> · </span>
       <a href="README_CN.md"><strong>简体中文</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="README_JA.md"><strong>日本語</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="README_KO.md"><strong>한국어</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="README_TH.md"><strong>ไทย</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="README_VI.md"><strong>Tiếng Việt</strong></a>
+      <span style="color: #afb8c1;"> · </span>
+      <a href="README_AR.md"><strong>العربية</strong></a>
     </p>
     <p style="margin: 0 0 18px; padding-bottom: 16px; border-bottom: 1px solid #eaeef2; line-height: 2;">
       <a href="https://ai.quantdinger.com"><strong>SaaS</strong></a>
@@ -559,6 +569,7 @@ QuantDinger/
 | 文档 | 说明 |
 |------|------|
 | [英文总览](../README.md) | 仓库根目录英文 README（与本文结构同步） |
+| [日本語](README_JA.md) · [한국어](README_KO.md) · [ไทย](README_TH.md) · [Tiếng Việt](README_VI.md) · [العربية](README_AR.md) | 精简版多语言 README（与英文/中文互补；深度说明仍以英文或本文为准） |
 | [更新日志](CHANGELOG.md) | 版本历史与迁移说明 |
 | [多用户部署](multi-user-setup.md) | PostgreSQL 多用户部署 |
 | [云服务器部署](CLOUD_DEPLOYMENT_CN.md) | 域名、HTTPS、反向代理与生产部署 |
