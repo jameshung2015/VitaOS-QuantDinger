@@ -5,6 +5,7 @@ Provides REST API for MT5 trading operations.
 """
 
 from flask import Blueprint, request, jsonify
+from app.utils.auth import login_required
 
 from app.utils.logger import get_logger
 
@@ -46,6 +47,7 @@ def _get_client():
 # ==================== Connection Management ====================
 
 @mt5_bp.route("/status", methods=["GET"])
+@login_required
 def get_status():
     """Get MT5 connection status."""
     try:
@@ -65,6 +67,7 @@ def get_status():
 
 
 @mt5_bp.route("/connect", methods=["POST"])
+@login_required
 def connect():
     """
     Connect to MT5 terminal.
@@ -138,6 +141,7 @@ def connect():
 
 
 @mt5_bp.route("/disconnect", methods=["POST"])
+@login_required
 def disconnect():
     """Disconnect from MT5 terminal."""
     global _client
@@ -155,6 +159,7 @@ def disconnect():
 # ==================== Account Queries ====================
 
 @mt5_bp.route("/account", methods=["GET"])
+@login_required
 def get_account():
     """Get account information."""
     try:
@@ -170,6 +175,7 @@ def get_account():
 
 
 @mt5_bp.route("/positions", methods=["GET"])
+@login_required
 def get_positions():
     """Get open positions."""
     try:
@@ -186,6 +192,7 @@ def get_positions():
 
 
 @mt5_bp.route("/orders", methods=["GET"])
+@login_required
 def get_orders():
     """Get pending orders."""
     try:
@@ -202,6 +209,7 @@ def get_orders():
 
 
 @mt5_bp.route("/symbols", methods=["GET"])
+@login_required
 def get_symbols():
     """Get available symbols."""
     try:
@@ -220,6 +228,7 @@ def get_symbols():
 # ==================== Trading ====================
 
 @mt5_bp.route("/order", methods=["POST"])
+@login_required
 def place_order():
     """
     Place an order.
@@ -296,6 +305,7 @@ def place_order():
 
 
 @mt5_bp.route("/close", methods=["POST"])
+@login_required
 def close_position():
     """
     Close a position.
@@ -348,6 +358,7 @@ def close_position():
 
 
 @mt5_bp.route("/order/<int:ticket>", methods=["DELETE"])
+@login_required
 def cancel_order(ticket: int):
     """Cancel a pending order."""
     try:
@@ -368,6 +379,7 @@ def cancel_order(ticket: int):
 # ==================== Market Data ====================
 
 @mt5_bp.route("/quote", methods=["GET"])
+@login_required
 def get_quote():
     """
     Get real-time quote.
