@@ -2,6 +2,7 @@
 QuantDinger Python API - Flask application factory.
 """
 import math
+import os
 import logging
 import traceback
 
@@ -225,9 +226,21 @@ def create_app(config_name='default'):
     app.json = SafeJSONProvider(app)
 
     app.config['JSON_AS_ASCII'] = False
-    
-    CORS(app)
-    
+
+    # CORS — pin to specific origins instead of '*'. FRONTEND_URL accepts a
+    # comma-separated list (e.g. "http://localhost:8888,http://localhost:8000")
+    # so dev and prod frontends can both be allowed. Default covers the docker
+    # frontend port (8888) and the Vue dev server port (8000).
+    _cors_origins = [
+        o.strip() for o in os.getenv(
+            "FRONTEND_URL",
+            "http://localhost:8888,http://localhost:8000",
+        ).split(",")
+        if o.strip()
+    ]
+    CORS(app, origins=_cors_origins)
+    logger.info(f"CORS allowed origins: {_cors_origins}")
+
     setup_logger()
 
     # ib_insync uses asyncio across Flask + worker threads; without this, IBKR
