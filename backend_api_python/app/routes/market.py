@@ -98,8 +98,8 @@ def get_market_types():
     # To re-enable: set SHOW_CN_STOCK=true.
     show_cn_stock = str(os.getenv("SHOW_CN_STOCK", "false")).strip().lower() in ("1", "true", "yes", "on")
 
-    # Keep a stable UX order; CN/HK near US; MOEX last (niche vs crypto/FX/futures).
-    desired_order = ['USStock', 'CNStock', 'HKStock', 'Crypto', 'Forex', 'Futures', 'MOEX']
+    # Keep a stable UX order; CN/CNETF/HK near US; MOEX last (niche vs crypto/FX/futures).
+    desired_order = ['USStock', 'CNStock', 'CNETF', 'HKStock', 'Crypto', 'Forex', 'Futures', 'MOEX']
     order_rank = {v: i for i, v in enumerate(desired_order)}
 
     def _normalize_item(x):
@@ -640,3 +640,71 @@ def get_stock_name():
             'msg': f'Failed: {str(e)}',
             'data': None
         }), 500
+
+
+@market_bp.route('/etf/meta', methods=['GET'])
+def get_etf_meta():
+    """
+    获取 ETF 元数据（最小可用）
+
+    参数:
+        symbol: ETF 代码（如 159915 / 159915.SZ / 510300.SH）
+        market: 默认 CNETF
+    """
+    try:
+        market = (request.args.get('market') or 'CNETF').strip()
+        symbol = _normalize_symbol(request.args.get('symbol'))
+
+        if not symbol:
+            return jsonify({'code': 0, 'msg': 'Missing symbol parameter', 'data': None}), 400
+
+        if market != 'CNETF':
+            return jsonify({'code': 0, 'msg': 'Only CNETF is supported by this endpoint', 'data': None}), 400
+
+        # Name resolution: seed/quote fallback
+        name = resolve_symbol_name(market, symbol) or seed_get_symbol_name(market, symbol) or symbol
+
+        # Price snapshot
+        price = kline_service.get_realtime_price(market, symbol)
+
+        # Recent kline summary
+        rows = kline_service.get_kline(market=market, symbol=symbol, timeframe='1D', limit=2) or []
+        latest_time = rows[-1].get('time') if rows else None
+
+        # Basic exchange inference by symbol normalization rules.
+        s_up = symbol.upper()
+        if s_up.endswith('.SZ') or s_up.startswith('SZ'):
+            exchange = 'SZSE'
+        elif s_up.endswith('.SH') or s_up.startswith('SH'):
+            exchange = 'SSE'
+        elif s_up.isdigit() and len(s_up) == 6:
+            exchange = 'SSE' if s_up.startswith('5') else 'SZSE'
+        else:
+            exchange = 'SSE/SZSE'
+
+        return jsonify({
+            'code': 1,
+            'msg': 'success',
+            'data': {
+                'market': market,
+                'symbol': symbol,
+                'name': name,
+                'category': 'ETF',
+                'country': 'CN',
+                'currency': 'CNY',
+                'exchange': exchange,
+                'price': price.get('price', 0),
+                'change': price.get('change', 0),
+                'changePercent': price.get('changePercent', 0),
+                'high': price.get('high', 0),
+                'low': price.get('low', 0),
+                'open': price.get('open', 0),
+                'previousClose': price.get('previousClose', 0),
+                'priceSource': price.get('source', 'unknown'),
+                'latestKlineTime': latest_time,
+            }
+        })
+    except Exception as e:
+        logger.error(f"get_etf_meta failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({'code': 0, 'msg': str(e), 'data': None}), 500

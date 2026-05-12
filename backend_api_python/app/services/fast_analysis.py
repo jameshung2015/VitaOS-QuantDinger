@@ -1955,7 +1955,7 @@ IMPORTANT:
             return False
 
         fundamental_present = (
-            market_type in ("USStock", "CNStock", "HKStock") and _fundamental_meaningful(fundamental)
+            market_type in ("USStock", "CNStock", "CNETF", "HKStock") and _fundamental_meaningful(fundamental)
         )
         if market_type == "Crypto" and crypto_factors:
             fundamental_present = True
@@ -2188,7 +2188,7 @@ IMPORTANT:
     
     def _calculate_fundamental_score(self, fundamental: Dict, market: str) -> float:
         """计算基本面评分 (-100 to +100)"""
-        if market not in ("USStock", "CNStock", "HKStock") or not fundamental:
+        if market not in ("USStock", "CNStock", "CNETF", "HKStock") or not fundamental:
             return 50.0
 
         score = 0.0

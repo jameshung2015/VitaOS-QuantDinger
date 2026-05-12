@@ -123,14 +123,14 @@
 
 ### 当前状态
 
-- `进行中`
+- `已完成`
 
 ### 记录项
 
 - 阶段: `Phase 1`
 - 名称: `CNStock Tushare 主链路接入与 Docker 验证`
 - 日期: `2026-05-12`
-- 状态: `进行中`
+- 状态: `已完成`
 
 ### 关键决策
 
@@ -183,7 +183,61 @@
 
 ### 当前状态
 
-- `预留未实现`
+- `进行中`
+
+### 记录项
+
+- 阶段: `Phase 2`
+- 名称: `CNETF 最小接口落地（枚举/搜索/K线）`
+- 日期: `2026-05-12`
+- 状态: `进行中`
+
+### 关键决策
+
+- 新增独立数据源实现:
+  - `backend_api_python/app/data_sources/cn_etf.py`
+  - 复用中国市场多源链路，保持 `Tushare -> TwelveData -> Tencent -> yfinance -> AkShare`。
+- 将 `CNETF` 接入数据源工厂与市场别名:
+  - `cnetf`
+  - `cn_etf`
+  - `etf_cn`
+- 将 `CNETF` 暴露到市场枚举接口:
+  - `/api/market/types`
+  - `/api/agent/v1/markets`
+- 为当前已运行数据库增加 `CNETF` 搜索可用性:
+  - 在 `market_symbols_seed.py` 增加 `CNETF` fallback 热门 ETF 列表
+  - 即使 DB 尚未执行新 seed，`/api/market/symbols/search` 也可返回 ETF 结果。
+
+### 影响面
+
+- `backend_api_python/app/data_sources/cn_etf.py`（新增）
+- `backend_api_python/app/data_sources/factory.py`
+- `backend_api_python/app/routes/market.py`
+- `backend_api_python/app/routes/agent_v1/markets.py`
+- `backend_api_python/app/data/market_symbols_seed.py`
+- `backend_api_python/app/services/symbol_name.py`
+- `backend_api_python/app/services/market_data_collector.py`
+- `backend_api_python/app/services/trading_executor.py`
+- `backend_api_python/app/services/fast_analysis.py`
+- `backend_api_python/migrations/init.sql`
+
+### 验证结果
+
+- 已完成 Docker 后端重建并重启。
+- `GET /api/market/types` 已包含 `CNETF`。
+- `GET /api/market/symbols/search?market=CNETF&keyword=159&limit=5` 返回非空结果。
+- `GET /api/indicator/kline?market=CNETF&symbol=159915.SZ&timeframe=1D&limit=5` 返回 `code=1` 且有数据。
+- `GET /api/market/etf/meta?market=CNETF&symbol=159915.SZ` 返回 `code=1`，包含 ETF 名称与价格快照。
+- `POST /api/fast-analysis/analyze` 在未登录上下文返回 `401 Token missing`（鉴权正常）。
+- 容器内 `MarketDataCollector.collect_all(market='CNETF', symbol='159915.SZ')` 返回完整结构（`price/kline/fundamental/company` 均存在）。
+
+### 回退点
+
+- 如需回退本记录项，可移除 `cn_etf.py`，并还原上述影响文件中的 `CNETF` 相关改动。
+
+### 备注
+
+- 本轮已补齐 ETF 元数据接口与分析入口后端能力，前端可基于新接口直接接入 ETF 详情与分析页。
 
 ### 计划记录点
 
