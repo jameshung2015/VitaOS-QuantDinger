@@ -13,14 +13,6 @@ from typing import Optional
 SUPPORTED_LANGS = {
     "en-US",
     "zh-CN",
-    "zh-TW",
-    "ja-JP",
-    "ko-KR",
-    "vi-VN",
-    "th-TH",
-    "ar-SA",
-    "fr-FR",
-    "de-DE",
 }
 
 
@@ -43,8 +35,6 @@ def _normalize_lang(raw: Optional[str]) -> Optional[str]:
         return "en-US"
     if lower in ("zh", "zh-cn", "zh-hans"):
         return "zh-CN"
-    if lower in ("zh-tw", "zh-hant"):
-        return "zh-TW"
 
     # Keep canonical casing if already supported
     for lang in SUPPORTED_LANGS:
