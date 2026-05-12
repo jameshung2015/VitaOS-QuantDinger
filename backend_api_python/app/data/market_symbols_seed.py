@@ -14,6 +14,20 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+_CNETF_FALLBACK = [
+    {"market": "CNETF", "symbol": "510300", "name": "沪深300ETF"},
+    {"market": "CNETF", "symbol": "510050", "name": "上证50ETF"},
+    {"market": "CNETF", "symbol": "512100", "name": "中证1000ETF"},
+    {"market": "CNETF", "symbol": "159915", "name": "创业板ETF"},
+    {"market": "CNETF", "symbol": "159919", "name": "沪深300ETF"},
+    {"market": "CNETF", "symbol": "159949", "name": "创业板50ETF"},
+    {"market": "CNETF", "symbol": "512880", "name": "证券ETF"},
+    {"market": "CNETF", "symbol": "512010", "name": "医药ETF"},
+    {"market": "CNETF", "symbol": "512170", "name": "医疗ETF"},
+    {"market": "CNETF", "symbol": "516160", "name": "新能源ETF"},
+]
+
+
 def _get_db_connection():
     """Get database connection, returns None if not available."""
     try:
@@ -52,9 +66,16 @@ def get_hot_symbols(market: str, limit: int = 10) -> List[Dict]:
             )
             rows = cur.fetchall() or []
             cur.close()
-            return [{'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''} for r in rows]
+            out = [{'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''} for r in rows]
+            if out:
+                return out
+            if market == 'CNETF':
+                return _CNETF_FALLBACK[:max(limit, 0)]
+            return []
     except Exception as e:
         logger.debug(f"get_hot_symbols from DB failed: {e}")
+        if market == 'CNETF':
+            return _CNETF_FALLBACK[:max(limit, 0)]
         return []
 
 
@@ -93,9 +114,26 @@ def search_symbols(market: str, keyword: str, limit: int = 20) -> List[Dict]:
             )
             rows = cur.fetchall() or []
             cur.close()
-            return [{'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''} for r in rows]
+            out = [{'market': r['market'], 'symbol': r['symbol'], 'name': r.get('name') or ''} for r in rows]
+            if out:
+                return out
+            if market == 'CNETF':
+                kw_u = kw.upper()
+                local = []
+                for row in _CNETF_FALLBACK:
+                    if kw_u in row['symbol'].upper() or kw_u in row['name'].upper():
+                        local.append(dict(row))
+                return local[:max(limit, 0)]
+            return []
     except Exception as e:
         logger.debug(f"search_symbols from DB failed: {e}")
+        if market == 'CNETF':
+            kw_u = kw.upper()
+            local = []
+            for row in _CNETF_FALLBACK:
+                if kw_u in row['symbol'].upper() or kw_u in row['name'].upper():
+                    local.append(dict(row))
+            return local[:max(limit, 0)]
         return []
 
 
@@ -132,6 +170,8 @@ def get_symbol_name(market: str, symbol: str) -> Optional[str]:
     candidate_symbols = [s]
     if m == 'Crypto' and '/' not in s:
         candidate_symbols.append(f"{s}/USDT")
+    if m == 'CNETF' and s.isdigit() and len(s) == 6:
+        candidate_symbols.extend([s + '.SH', s + '.SZ'])
 
     try:
         with _get_db_connection() as db:
@@ -148,6 +188,12 @@ def get_symbol_name(market: str, symbol: str) -> Optional[str]:
             cur.close()
     except Exception as e:
         logger.debug(f"get_symbol_name from DB failed: {e}")
+
+    if m == 'CNETF':
+        s_u = s.upper()
+        for row in _CNETF_FALLBACK:
+            if row['symbol'].upper() == s_u:
+                return row['name']
     
     return None
 

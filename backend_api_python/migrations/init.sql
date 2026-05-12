@@ -758,6 +758,17 @@ INSERT INTO qd_market_symbols (market, symbol, name, exchange, currency, is_acti
 ('CNStock', '002594', '比亚迪', 'SZSE', 'CNY', 1, 1, 93),
 ('CNStock', '300750', '宁德时代', 'SZSE', 'CNY', 1, 1, 92),
 ('CNStock', '000001', '平安银行', 'SZSE', 'CNY', 1, 1, 91),
+-- 中国场内 ETF (CNETF)
+('CNETF', '510300', '沪深300ETF', 'SSE', 'CNY', 1, 1, 100),
+('CNETF', '510050', '上证50ETF', 'SSE', 'CNY', 1, 1, 99),
+('CNETF', '512100', '中证1000ETF', 'SSE', 'CNY', 1, 1, 98),
+('CNETF', '159915', '创业板ETF', 'SZSE', 'CNY', 1, 1, 97),
+('CNETF', '159919', '沪深300ETF', 'SZSE', 'CNY', 1, 1, 96),
+('CNETF', '159949', '创业板50ETF', 'SZSE', 'CNY', 1, 1, 95),
+('CNETF', '512880', '证券ETF', 'SSE', 'CNY', 1, 1, 94),
+('CNETF', '512010', '医药ETF', 'SSE', 'CNY', 1, 1, 93),
+('CNETF', '512170', '医疗ETF', 'SSE', 'CNY', 1, 1, 92),
+('CNETF', '516160', '新能源ETF', 'SSE', 'CNY', 1, 1, 91),
 -- 港股/H股 (HKStock)
 ('HKStock', '00700', '腾讯控股', 'HKEX', 'HKD', 1, 1, 100),
 ('HKStock', '09988', '阿里巴巴-W', 'HKEX', 'HKD', 1, 1, 99),

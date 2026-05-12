@@ -3,6 +3,7 @@
 #
 # Serves the pre-built SPA from `dist/` (nginx). Vue source lives in a
 # separate private repository: build there, then copy `dist/` into this tree.
+# Latest features: i18n support (zh-CN, zh-TW, en-US, etc.), CNETF market selector
 
 ARG RUNTIME_IMAGE=nginx:1.25-alpine
 
@@ -18,6 +19,9 @@ ENV NGINX_ENVSUBST_FILTER=BACKEND_URL \
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY dist/ /usr/share/nginx/html/
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=5s \
+  CMD curl -f http://localhost/health || exit 1
 
 EXPOSE 80
 

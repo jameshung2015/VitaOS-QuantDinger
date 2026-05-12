@@ -132,7 +132,7 @@ class MarketDataCollector:
             }
             
             # 如果需要基本面，也并行获取
-            if market in ('USStock', 'CNStock', 'HKStock'):
+            if market in ('USStock', 'CNStock', 'CNETF', 'HKStock'):
                 core_futures[executor.submit(self._get_fundamental, market, symbol)] = "fundamental"
                 core_futures[executor.submit(self._get_company, market, symbol)] = "company"
             elif market == 'Crypto':
@@ -635,7 +635,7 @@ class MarketDataCollector:
         try:
             if market == 'USStock':
                 return self._get_us_fundamental(symbol)
-            if market in ('CNStock', 'HKStock'):
+            if market in ('CNStock', 'CNETF', 'HKStock'):
                 return self._get_cn_hk_fundamental(market, symbol)
         except Exception as e:
             logger.warning(f"Fundamental data fetch failed for {market}:{symbol}: {e}")
@@ -668,7 +668,7 @@ class MarketDataCollector:
                 fetch_hk_financial_statements,
             )
 
-            code = normalize_cn_code(symbol) if market == 'CNStock' else normalize_hk_code(symbol)
+            code = normalize_cn_code(symbol) if market in ('CNStock', 'CNETF') else normalize_hk_code(symbol)
             is_hk = market == 'HKStock'
 
             parts = fetch_quote(code)
@@ -1646,7 +1646,7 @@ class MarketDataCollector:
                         'market_cap': profile.get('marketCapitalization'),
                         'website': profile.get('weburl'),
                     }
-            if market in ('CNStock', 'HKStock'):
+            if market in ('CNStock', 'CNETF', 'HKStock'):
                 return self._get_cn_hk_company(market, symbol)
             
         except Exception as e:
@@ -1673,7 +1673,7 @@ class MarketDataCollector:
                 fetch_hk_company_extras,
             )
 
-            code = normalize_cn_code(symbol) if market == 'CNStock' else normalize_hk_code(symbol)
+            code = normalize_cn_code(symbol) if market in ('CNStock', 'CNETF') else normalize_hk_code(symbol)
             is_hk = market == 'HKStock'
 
             parts = fetch_quote(code)
@@ -1683,8 +1683,8 @@ class MarketDataCollector:
 
             row: Dict[str, Any] = {
                 "name": cn_name or code,
-                "country": "CN" if market == "CNStock" else "HK",
-                "exchange": "SSE/SZSE" if market == "CNStock" else "HKEX",
+                "country": "CN" if market in ("CNStock", "CNETF") else "HK",
+                "exchange": "SSE/SZSE" if market in ("CNStock", "CNETF") else "HKEX",
                 "symbol": code,
                 "source": "tencent_quote",
             }

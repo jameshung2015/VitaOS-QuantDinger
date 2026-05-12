@@ -20,6 +20,9 @@ _MARKET_ALIASES: Dict[str, str] = {
     "us_stocks": "USStock",
     "stock": "USStock",
     "cnstock": "CNStock",
+    "cnetf": "CNETF",
+    "cn_etf": "CNETF",
+    "etf_cn": "CNETF",
     "hkstock": "HKStock",
     "futures": "Futures",
     "moex": "MOEX",
@@ -44,7 +47,7 @@ class DataSourceFactory:
         if not market:
             return "Crypto"
         raw = str(market).strip()
-        if raw in ("Crypto", "Forex", "Futures", "USStock", "CNStock", "HKStock", "MOEX"):
+        if raw in ("Crypto", "Forex", "Futures", "USStock", "CNStock", "CNETF", "HKStock", "MOEX"):
             return raw
         key = raw.lower().replace(" ", "").replace("-", "_")
         return _MARKET_ALIASES.get(key, raw)
@@ -92,6 +95,9 @@ class DataSourceFactory:
         elif market == 'CNStock':
             from app.data_sources.cn_stock import CNStockDataSource
             return CNStockDataSource()
+        elif market == 'CNETF':
+            from app.data_sources.cn_etf import CNETFDataSource
+            return CNETFDataSource()
         elif market == 'HKStock':
             from app.data_sources.hk_stock import HKStockDataSource
             return HKStockDataSource()

@@ -26,6 +26,7 @@ _MARKETS = [
     # Hidden by default (same reason as /api/market/types): prebuilt frontend in this repo.
     # Set SHOW_CN_STOCK=true to expose via the Agent API too.
     {"value": "CNStock",  "label": "China A-shares"},
+    {"value": "CNETF",    "label": "China ETFs"},
     {"value": "HKStock",  "label": "HK Stocks"},
     {"value": "Crypto",   "label": "Crypto"},
     {"value": "Forex",    "label": "Forex"},

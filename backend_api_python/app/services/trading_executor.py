@@ -1553,7 +1553,7 @@ class TradingExecutor:
                             exit_reason = (
                                 f"Unsupported market type: {getattr(e, 'market', '')}. "
                                 f"Please set strategy market_category/market to one of: "
-                                f"Crypto/USStock/CNStock/HKStock/Forex/Futures/MOEX."
+                                f"Crypto/USStock/CNStock/CNETF/HKStock/Forex/Futures/MOEX."
                             )
                         else:
                             exit_reason = msg if fatal else f"too many consecutive errors: {consecutive_errors}/{max_consecutive_errors}"

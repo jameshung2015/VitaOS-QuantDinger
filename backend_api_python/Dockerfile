@@ -1,5 +1,7 @@
 # QuantDinger Backend API Dockerfile
+# Supports Python 3.11, 3.12, 3.13+ (default 3.12)
 # BASE_IMAGE can be overridden from docker-compose (e.g. IMAGE_PREFIX for mirror pulls).
+# Latest features: CNETF (China ETF market), multi-source kline data, AI analysis, backtest
 ARG BASE_IMAGE=python:3.12-slim-bookworm
 FROM ${BASE_IMAGE}
 
@@ -56,6 +58,7 @@ EXPOSE 5000
 ENV PYTHONUNBUFFERED=1
 ENV PYTHON_API_HOST=0.0.0.0
 ENV PYTHON_API_PORT=5000
+ENV MARKET_TYPES=crypto,CNStock,USStock,HKStock,CNETF,Forex,Futures
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["gunicorn", "-c", "gunicorn_config.py", "run:app"]

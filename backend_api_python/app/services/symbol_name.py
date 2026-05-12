@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 def _normalize_symbol_for_market(market: str, symbol: str) -> str:
     m = (market or '').strip()
     s = (symbol or '').strip().upper()
-    if m == 'CNStock':
+    if m in ('CNStock', 'CNETF'):
         return normalize_cn_code(s)
     if m == 'HKStock':
         return normalize_hk_code(s)
@@ -111,7 +111,7 @@ def resolve_symbol_name(market: str, symbol: str) -> Optional[str]:
         return _resolve_name_from_finnhub(s) or _resolve_name_from_yfinance(s)
 
     # CN/HK stocks: try Tencent quote name first (no key), then yfinance best-effort.
-    if m in ('CNStock', 'HKStock'):
+    if m in ('CNStock', 'CNETF', 'HKStock'):
         try:
             from app.data_sources.tencent import fetch_quote
             parts = fetch_quote(s)

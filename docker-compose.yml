@@ -1,4 +1,5 @@
 # QuantDinger Docker Compose - One-Click Deployment
+# Latest features: CNETF (China ETF market), AI analysis, multi-market backtest
 # Usage:
 #   1. Copy env.example to .env and edit your settings
 #      cp backend_api_python/env.example backend_api_python/.env
@@ -8,7 +9,7 @@
 #   3. docker-compose up -d --build
 #   4. Open http://localhost:8888
 #
-# Frontend image: nginx serving prebuilt files from `frontend/dist` only.
+# Frontend image: nginx serving prebuilt files from `frontend/dist` (includes latest i18n & CNETF UI).
 # Vue source is maintained separately; build there and sync dist into this repo.
 #
 # Note: The container will NOT start if SECRET_KEY is using the default value.
@@ -77,6 +78,8 @@ services:
 
   # ========================
   # Backend API (Python/Flask)
+  # Multi-market support: crypto, A-Stock (CNStock/CNETF), US/HK stocks
+  # Features: AI analysis, backtesting, real-time signals, portfolio monitoring
   # ========================
   backend:
     build:
@@ -107,6 +110,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CACHE_ENABLED=true
+      # Supported markets: crypto, CNStock, CNETF (China ETF), USStock, HKStock, Forex, Futures
+      - MARKET_TYPES=${MARKET_TYPES:-crypto,CNStock,USStock,HKStock,CNETF,Forex,Futures}
       # Database connection pool tuning (see app/utils/db_postgres.py).
       # Defaults are safe for ~50 concurrent DB users; raise if you run many
       # bots or see `connection pool exhausted` errors.
