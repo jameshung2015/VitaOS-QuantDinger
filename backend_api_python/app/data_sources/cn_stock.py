@@ -22,13 +22,14 @@ from app.data_sources.asia_stock_kline import (
     fetch_akshare_minute_klines,
     fetch_akshare_weekly_klines,
 )
+from app.data_sources.tushare import fetch_tushare_klines
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class CNStockDataSource(BaseDataSource):
-    """A股数据源（TwelveData + Tencent + yfinance + AkShare）"""
+    """A股数据源（Tushare + TwelveData + Tencent + yfinance + AkShare）"""
 
     name = "CNStock/multi-source"
 
@@ -62,7 +63,23 @@ class CNStockDataSource(BaseDataSource):
         tf = normalize_chart_timeframe(timeframe)
         lim = max(int(limit or 300), 1)
 
-        # Tier 1: Twelve Data (paid, most reliable)
+        # Tier 1: Tushare (preferred historical source for CN market)
+        rows = fetch_tushare_klines(
+            symbol=symbol,
+            timeframe=tf,
+            limit=lim,
+            before_time=before_time,
+        )
+        if rows:
+            return self.filter_and_limit(
+                rows,
+                limit=lim,
+                before_time=before_time,
+                after_time=after_time,
+                truncate=(after_time is None),
+            )
+
+        # Tier 2: Twelve Data (paid, globally stable fallback)
         rows = fetch_twelvedata_klines(
             is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
         )
@@ -75,7 +92,7 @@ class CNStockDataSource(BaseDataSource):
                 truncate=(after_time is None),
             )
 
-        # Tier 2: Tencent for daily/weekly (fast, free)
+        # Tier 3: Tencent for daily/weekly (fast, free)
         if tf in ("1D", "1W"):
             tf_map = {"1D": "day", "1W": "week"}
             period = tf_map.get(tf, "day")
@@ -90,7 +107,7 @@ class CNStockDataSource(BaseDataSource):
                     truncate=(after_time is None),
                 )
 
-        # Tier 3: yfinance (works when Yahoo not rate-limited)
+        # Tier 4: yfinance (works when Yahoo not rate-limited)
         rows = fetch_yfinance_klines(
             is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
         )
@@ -103,7 +120,7 @@ class CNStockDataSource(BaseDataSource):
                 truncate=(after_time is None),
             )
 
-        # Tier 4: AkShare (fragile overseas, last resort)
+        # Tier 5: AkShare (fragile overseas, last resort)
         if tf in ("1m", "5m", "15m", "30m", "1H", "4H"):
             rows = fetch_akshare_minute_klines(
                 is_hk=False, tencent_code=code, timeframe=tf, limit=lim, before_time=before_time

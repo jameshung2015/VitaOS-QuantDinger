@@ -480,6 +480,22 @@ CONFIG_SCHEMA = {
                 'link_text': 'settings.link.getApiKey',
                 'description': 'Twelve Data API key for CN/HK stock K-lines (free 800 credits/day)'
             },
+            {
+                'key': 'ENABLE_TUSHARE',
+                'label': 'Enable Tushare',
+                'type': 'boolean',
+                'default': 'False',
+                'description': 'Prefer Tushare as the primary historical data source for China A-shares'
+            },
+            {
+                'key': 'TUSHARE_TOKEN',
+                'label': 'Tushare Token',
+                'type': 'password',
+                'required': False,
+                'link': 'https://tushare.pro/register',
+                'link_text': 'settings.link.getApiKey',
+                'description': 'Tushare Pro token for CNStock historical daily and minute K-lines'
+            },
         ]
     },
 

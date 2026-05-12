@@ -131,6 +131,8 @@ def load_addon_config() -> Dict[str, Any]:
         ('TIINGO_API_KEY', 'tiingo.api_key', 'string'),
         ('TIINGO_TIMEOUT', 'tiingo.timeout', 'int'),
         ('TWELVE_DATA_API_KEY', 'twelve_data.api_key', 'string'),
+        ('ENABLE_TUSHARE', 'tushare.enabled', 'bool'),
+        ('TUSHARE_TOKEN', 'tushare.token', 'string'),
 
         # Search (Google CSE / Bing)
         ('SEARCH_PROVIDER', 'search.provider', 'string'),

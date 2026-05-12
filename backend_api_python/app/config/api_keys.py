@@ -41,6 +41,15 @@ class MetaAPIKeys(type):
         return val if val else ''
 
     @property
+    def TUSHARE_TOKEN(cls):
+        env_val = os.getenv('TUSHARE_TOKEN', '').strip()
+        if env_val:
+            return env_val
+        from app.utils.config_loader import load_addon_config
+        val = load_addon_config().get('tushare', {}).get('token')
+        return val if val else ''
+
+    @property
     def ADANOS_API_KEY(cls):
         """Adanos Market Sentiment API key (optional)."""
         env_val = os.getenv('ADANOS_API_KEY', '').strip()
