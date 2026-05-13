@@ -1,48 +1,51 @@
 #!/bin/bash
 # ======================================================
-# Sync a production frontend build into this repository.
-#
-# Vue source is not in this open-source tree. Clone your private repo
-# elsewhere, build it, then either:
-#   - export QUANTDINGER_VUE_SRC=/path/to/vue-repo && ./scripts/build-frontend.sh
-#   - or manually: rsync -a --delete /path/to/vue-repo/dist/ frontend/dist/
-#
-# Usage:
-#   QUANTDINGER_VUE_SRC=~/path/to/private-vue-repo ./scripts/build-frontend.sh
+# Build frontend from this repository's frontend directory by default.
+# Optional override:
+#   QUANTDINGER_FRONTEND_DIR=/path/to/other/frontend ./scripts/build-frontend.sh
 #
 # Prerequisites:
-#   - Node.js >= 16 in PATH (only when using this script to npm build)
+#   - Node.js >= 16 in PATH
 # ======================================================
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_FRONTEND_DIR="$PROJECT_ROOT/frontend"
 DIST_TARGET="$PROJECT_ROOT/frontend/dist"
 
+FRONTEND_DIR="${QUANTDINGER_FRONTEND_DIR:-$REPO_FRONTEND_DIR}"
+
 echo "============================================"
-echo "  QuantDinger — sync frontend dist"
+echo "  QuantDinger — build frontend"
 echo "============================================"
 
-if [ -z "${QUANTDINGER_VUE_SRC:-}" ] || [ ! -d "$QUANTDINGER_VUE_SRC" ]; then
-  echo "ERROR: Set QUANTDINGER_VUE_SRC to the root of your private Vue repository clone."
-  echo "Example: export QUANTDINGER_VUE_SRC=\$HOME/work/QuantDinger-Vue"
+if [ ! -d "$FRONTEND_DIR" ]; then
+  echo "ERROR: Frontend directory not found: $FRONTEND_DIR"
+  echo "Set QUANTDINGER_FRONTEND_DIR or use default: $REPO_FRONTEND_DIR"
   exit 1
 fi
 
-VUE_DIR="$(cd "$QUANTDINGER_VUE_SRC" && pwd)"
-echo "Vue repo: $VUE_DIR"
+FRONTEND_DIR="$(cd "$FRONTEND_DIR" && pwd)"
+REPO_FRONTEND_DIR="$(cd "$REPO_FRONTEND_DIR" && pwd)"
+echo "Frontend dir: $FRONTEND_DIR"
 
 echo "[1/3] Installing dependencies..."
-cd "$VUE_DIR"
+cd "$FRONTEND_DIR"
 npm install --legacy-peer-deps
 
 echo "[2/3] Building production bundle..."
 npm run build
 
-echo "[3/3] Syncing dist -> frontend/dist/..."
-rm -rf "$DIST_TARGET"/*
-cp -r "$VUE_DIR/dist/"* "$DIST_TARGET/"
+if [ "$FRONTEND_DIR" = "$REPO_FRONTEND_DIR" ]; then
+  echo "[3/3] Sync skipped (build already outputs to frontend/dist)."
+else
+  echo "[3/3] Syncing dist -> frontend/dist/..."
+  mkdir -p "$DIST_TARGET"
+  rm -rf "$DIST_TARGET"/*
+  cp -r "$FRONTEND_DIR/dist/"* "$DIST_TARGET/"
+fi
 
 echo ""
 echo "============================================"

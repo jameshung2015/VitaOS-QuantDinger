@@ -1,17 +1,18 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Build the QuantDinger Vue frontend and deploy it to Docker.
+    Build the in-repo QuantDinger frontend and deploy it to Docker.
 
 .DESCRIPTION
-    1. Runs `npm run build` inside the Vue source directory.
-    2. Syncs the generated dist/ into this project's frontend/dist/.
+    1. Runs `npm run build` inside the frontend directory.
+    2. If building from an external override directory, syncs dist/ into this project's frontend/dist/.
     3. Rebuilds and restarts the Docker frontend service.
     4. Reports final container health.
 
-.PARAMETER VueSrc
-    Absolute path to the Vue source repo (default: D:\app\QuantDinger-Vue).
-    Override via env var QUANTDINGER_VUE_SRC or this parameter.
+.PARAMETER FrontendDir
+    Frontend source directory.
+    Default: <project>/frontend.
+    Optional override via env var QUANTDINGER_FRONTEND_DIR.
 
 .PARAMETER SkipBuild
     Skip the npm build step (use existing dist from VueSrc).
@@ -23,11 +24,12 @@
     .\scripts\deploy-frontend.ps1
 
 .EXAMPLE
-    .\scripts\deploy-frontend.ps1 -VueSrc "C:\code\QuantDinger-Vue" -SkipBuild
+    .\scripts\deploy-frontend.ps1 -FrontendDir "C:\code\QuantDinger-Vue" -SkipBuild
 #>
 
 param(
-    [string] $VueSrc    = $env:QUANTDINGER_VUE_SRC,
+    [Alias('VueSrc')]
+    [string] $FrontendDir = $env:QUANTDINGER_FRONTEND_DIR,
     [switch] $SkipBuild,
     [switch] $SkipDocker
 )
@@ -38,34 +40,58 @@ $ErrorActionPreference = 'Stop'
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
-$DistTarget  = Join-Path $ProjectRoot 'frontend\dist'
+$RepoFrontendDir = Join-Path $ProjectRoot 'frontend'
+$DistTarget  = Join-Path $RepoFrontendDir 'dist'
 
-if (-not $VueSrc) {
-    $VueSrc = 'D:\app\QuantDinger-Vue'
+if (-not $FrontendDir) {
+    $FrontendDir = $RepoFrontendDir
 }
 
-$VueSrc = $VueSrc.TrimEnd('\')
-$VueDist = Join-Path $VueSrc 'dist'
+$FrontendDir = $FrontendDir.TrimEnd('\\')
+$BuildDist = Join-Path $FrontendDir 'dist'
+$NeedsSync = $false
 
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host "  QuantDinger — build + deploy frontend"         -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
-Write-Host "  Vue src   : $VueSrc"
+Write-Host "  Frontend  : $FrontendDir"
 Write-Host "  Dist dest : $DistTarget"
+Write-Host "  Sync dist : $( if ($NeedsSync) { 'YES (external -> repo)' } else { 'NO (in-repo build)' } )"
 Write-Host "  Docker    : $( if ($SkipDocker) { 'SKIP' } else { 'rebuild frontend service' } )"
 Write-Host ""
 
-# ── 1. Validate Vue source dir ────────────────────────────────────────────────
-if (-not (Test-Path $VueSrc -PathType Container)) {
-    Write-Error "Vue source directory not found: $VueSrc`nSet -VueSrc or env var QUANTDINGER_VUE_SRC."
+# ── 1. Validate frontend source dir ───────────────────────────────────────────
+if (-not (Test-Path $FrontendDir -PathType Container)) {
+    Write-Error "Frontend directory not found: $FrontendDir`nSet -FrontendDir or env var QUANTDINGER_FRONTEND_DIR."
     exit 1
 }
 
+$ResolvedFrontendDir = (Resolve-Path -Path $FrontendDir).Path
+$ResolvedRepoFrontendDir = (Resolve-Path -Path $RepoFrontendDir).Path
+$NeedsSync = $ResolvedFrontendDir -ne $ResolvedRepoFrontendDir
+
 # ── 2. npm run build ──────────────────────────────────────────────────────────
 if (-not $SkipBuild) {
-    Write-Host "[1/3] Building frontend (npm run build)..." -ForegroundColor Yellow
-    Push-Location $VueSrc
+    $NodeModulesDir = Join-Path $FrontendDir 'node_modules'
+    $VueCliServiceCmd = Join-Path $NodeModulesDir '.bin\vue-cli-service.cmd'
+
+    if (-not (Test-Path $NodeModulesDir -PathType Container) -or -not (Test-Path $VueCliServiceCmd -PathType Leaf)) {
+        Write-Host "[1/4] Installing frontend dependencies (npm install --legacy-peer-deps)..." -ForegroundColor Yellow
+        Push-Location $FrontendDir
+        try {
+            npm install --legacy-peer-deps
+            if ($LASTEXITCODE -ne 0) { throw "npm install exited with code $LASTEXITCODE" }
+        } finally {
+            Pop-Location
+        }
+        Write-Host "      Dependency install complete." -ForegroundColor Green
+    } else {
+        Write-Host "[1/4] Dependencies already present (skip npm install)." -ForegroundColor DarkGray
+    }
+
+    Write-Host "[2/4] Building frontend (npm run build)..." -ForegroundColor Yellow
+    Push-Location $FrontendDir
     try {
         npm run build
         if ($LASTEXITCODE -ne 0) { throw "npm run build exited with code $LASTEXITCODE" }
@@ -74,36 +100,39 @@ if (-not $SkipBuild) {
     }
     Write-Host "      Build complete." -ForegroundColor Green
 } else {
-    Write-Host "[1/3] Skipping build (--SkipBuild specified)." -ForegroundColor DarkGray
+    Write-Host "[1/4] Skipping dependency install/build (--SkipBuild specified)." -ForegroundColor DarkGray
 }
 
 # ── 3. Validate dist exists ───────────────────────────────────────────────────
-if (-not (Test-Path $VueDist -PathType Container)) {
-    Write-Error "dist/ not found at: $VueDist — run without -SkipBuild or build manually first."
+if (-not (Test-Path $BuildDist -PathType Container)) {
+    Write-Error "dist/ not found at: $BuildDist — run without -SkipBuild or build manually first."
     exit 1
 }
 
-# ── 4. Sync dist → frontend/dist ─────────────────────────────────────────────
-Write-Host "[2/3] Syncing dist to $DistTarget ..." -ForegroundColor Yellow
+# ── 4. Sync dist only when building from external override ───────────────────
+if ($NeedsSync) {
+    Write-Host "[3/4] Syncing dist to $DistTarget ..." -ForegroundColor Yellow
 
-# Ensure target directory exists
-if (-not (Test-Path $DistTarget -PathType Container)) {
-    New-Item -ItemType Directory -Path $DistTarget -Force | Out-Null
+    if (-not (Test-Path $DistTarget -PathType Container)) {
+        New-Item -ItemType Directory -Path $DistTarget -Force | Out-Null
+    }
+
+    # Robocopy mirrors the directory (/MIR = sync + remove stale files)
+    # Exit codes 0-7 from robocopy indicate success (bit flags for copied/skipped/etc.)
+    $robocopy = robocopy "$BuildDist" "$DistTarget" /MIR /NFL /NDL /NJH /NJS /nc /ns /np
+    if ($LASTEXITCODE -ge 8) {
+        Write-Error "robocopy failed with exit code $LASTEXITCODE"
+        exit 1
+    }
+
+    Write-Host "      Sync complete." -ForegroundColor Green
+} else {
+    Write-Host "[3/4] Sync skipped (build already targets frontend/dist)." -ForegroundColor DarkGray
 }
-
-# Robocopy mirrors the directory (/MIR = sync + remove stale files)
-# Exit codes 0-7 from robocopy indicate success (bit flags for copied/skipped/etc.)
-$robocopy = robocopy "$VueDist" "$DistTarget" /MIR /NFL /NDL /NJH /NJS /nc /ns /np
-if ($LASTEXITCODE -ge 8) {
-    Write-Error "robocopy failed with exit code $LASTEXITCODE"
-    exit 1
-}
-
-Write-Host "      Sync complete." -ForegroundColor Green
 
 # ── 5. Docker rebuild ─────────────────────────────────────────────────────────
 if (-not $SkipDocker) {
-    Write-Host "[3/3] Rebuilding Docker frontend service..." -ForegroundColor Yellow
+    Write-Host "[4/4] Rebuilding Docker frontend service..." -ForegroundColor Yellow
     Push-Location $ProjectRoot
     try {
         docker compose -f docker-compose.yml up -d --build frontend
@@ -128,7 +157,7 @@ if (-not $SkipDocker) {
         Write-Host "      Container status: $health (check manually if not 'healthy')" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "[3/3] Skipping Docker redeploy (--SkipDocker specified)." -ForegroundColor DarkGray
+    Write-Host "[4/4] Skipping Docker redeploy (--SkipDocker specified)." -ForegroundColor DarkGray
 }
 
 Write-Host ""
