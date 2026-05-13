@@ -1284,6 +1284,51 @@ def run_single_monitor(
             or 60
         )
 
+        if monitor_type == 'monthly_events':
+            from app.services.monthly_events_agent import extract_monthly_key_events
+
+            language = config.get('language', 'zh-CN')
+            days = int(config.get('days') or 30)
+            monthly_data = extract_monthly_key_events(days=days, language=language)
+            result = {
+                'success': True,
+                'summary': monthly_data.get('summary', ''),
+                'events': monthly_data.get('items', []),
+                'agent': monthly_data.get('agent', {}),
+                'window_days': monthly_data.get('window_days', days),
+                'generated_at': monthly_data.get('generated_at'),
+                'position_analyses': [],
+                'positions': [],
+            }
+
+            with get_db_connection() as db:
+                cur = db.cursor()
+                cur.execute(
+                    """
+                    UPDATE qd_position_monitors
+                    SET last_run_at = NOW(),
+                        next_run_at = NOW() + INTERVAL '%s minutes',
+                        last_result = ?,
+                        run_count = run_count + 1,
+                        updated_at = NOW()
+                    WHERE id = ?
+                    """,
+                    (interval_minutes, json.dumps(result, ensure_ascii=False, default=str), monitor_id)
+                )
+                db.commit()
+                cur.close()
+
+            result['_meta'] = {
+                'monitor_id': monitor_id,
+                'monitor_name': name,
+                'user_id': monitor_user_id,
+                'language': language,
+                'notification_config': notification_config,
+                'positions': [],
+                'position_analyses': [],
+            }
+            return result
+
         if position_ids:
             positions = _get_positions_for_monitor(position_ids, user_id=monitor_user_id)
         elif config.get('symbol'):

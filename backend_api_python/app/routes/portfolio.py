@@ -583,7 +583,7 @@ def add_monitor():
         if not name:
             return jsonify({'code': 0, 'msg': 'Monitor name is required', 'data': None}), 400
         
-        if monitor_type not in ('ai', 'price_alert', 'pnl_alert'):
+        if monitor_type not in ('ai', 'price_alert', 'pnl_alert', 'monthly_events'):
             monitor_type = 'ai'
         
         # Calculate next_run_at based on interval (frontend sends run_interval_minutes)

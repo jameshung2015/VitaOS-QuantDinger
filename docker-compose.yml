@@ -101,6 +101,7 @@ services:
       - backend_data:/app/data
       # Mount .env for runtime config and admin-panel updates
       - ./backend_api_python/.env:/app/.env
+      - ../fin-event-agent:/external/fin-event-agent
     environment:
       - PYTHON_API_HOST=0.0.0.0
       - PYTHON_API_PORT=5000
@@ -127,6 +128,8 @@ services:
       - GUNICORN_THREADS=${GUNICORN_THREADS:-8}
       # IBKR/MT5 need local TWS or MT5 terminal; set false on SaaS cloud (see env.example).
       - ALLOW_LOCAL_DESKTOP_BROKERS=${ALLOW_LOCAL_DESKTOP_BROKERS:-true}
+      - FIN_EVENT_AGENT_DIR=/external/fin-event-agent
+      - FIN_EVENT_AGENT_HOST_DIR=D:/document/Obsidian/vaults/J-Workspace/AGI/Agents/projects/fin-event-agent
     networks:
       - quantdinger-network
     healthcheck:

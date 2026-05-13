@@ -43,6 +43,7 @@ from app.data_providers.sentiment import (
 from app.data_providers.adanos_sentiment import fetch_adanos_market_sentiment
 from app.data_providers.news import fetch_financial_news, get_economic_calendar
 from app.data_providers.heatmap import generate_heatmap_data
+from app.services.monthly_events_agent import extract_monthly_key_events
 from app.data_providers.opportunities import (
     analyze_opportunities_crypto, analyze_opportunities_stocks,
     analyze_opportunities_local_stocks, analyze_opportunities_forex,
@@ -169,6 +170,30 @@ def economic_calendar():
 
     except Exception as e:
         logger.error("economic_calendar failed: %s", e, exc_info=True)
+        return jsonify({"code": 0, "msg": str(e), "data": None}), 500
+
+
+@global_market_bp.route("/monthly-key-events", methods=["GET"])
+@login_required
+def monthly_key_events():
+    """Extract key upcoming events for the next month via fin-event-agent."""
+    try:
+        days = int(request.args.get("days") or 30)
+        force = request.args.get("force", "").lower() in ("1", "true", "yes")
+        cache_key = f"monthly_key_events_{max(1, min(days, 60))}"
+
+        if not force:
+            cached = get_cached(cache_key, 900)
+            if cached:
+                return jsonify({"code": 1, "msg": "success", "data": cached})
+
+        language = request.headers.get("Accept-Language", "zh-CN")
+        data = extract_monthly_key_events(days=days, language=language)
+        set_cached(cache_key, data, 900)
+
+        return jsonify({"code": 1, "msg": "success", "data": data})
+    except Exception as e:
+        logger.error("monthly_key_events failed: %s", e, exc_info=True)
         return jsonify({"code": 0, "msg": str(e), "data": None}), 500
 
 
